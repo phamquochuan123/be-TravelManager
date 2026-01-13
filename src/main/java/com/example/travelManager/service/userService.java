@@ -1,5 +1,8 @@
 package com.example.travelManager.service;
 
-public class userService {
+import org.springframework.stereotype.Service;
+
+@Service
+public class UserService {
 
 }
