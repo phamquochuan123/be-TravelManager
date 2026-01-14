@@ -2,9 +2,12 @@ package com.example.travelManager.service;
 
 import java.util.UUID;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
-import com.example.travelManager.domain.User;
+import com.example.travelManager.domain.UserEntity;
 import com.example.travelManager.domain.io.ProfileRequest;
 import com.example.travelManager.domain.io.ProfileResponse;
 
@@ -15,19 +18,24 @@ import com.example.travelManager.repository.UserRepository;
 public class ProfileServiceImpl implements ProfileService {
 
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public ProfileServiceImpl(UserRepository userRepository) {
+    public ProfileServiceImpl(UserRepository userRepository, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Override
     public ProfileResponse createProfile(ProfileRequest profileRequest) {
-        User newProfile = convertToUserDTO(profileRequest);
-        newProfile = userRepository.save(newProfile);
-        return convertToProfileResponse(newProfile);
+        UserEntity newProfile = convertToUserDTO(profileRequest);
+        if (!userRepository.existsByEmail(profileRequest.getEmail())) {
+            newProfile = userRepository.save(newProfile);
+            return convertToProfileResponse(newProfile);
+        }
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already exists");
     }
 
-    private ProfileResponse convertToProfileResponse(User newProfile) {
+    private ProfileResponse convertToProfileResponse(UserEntity newProfile) {
         return ProfileResponse.builder()
                 .name(newProfile.getName())
                 .email(newProfile.getEmail())
@@ -36,11 +44,11 @@ public class ProfileServiceImpl implements ProfileService {
                 .build();
     }
 
-    private User convertToUserDTO(ProfileRequest profileRequest) {
-        return User.builder()
+    private UserEntity convertToUserDTO(ProfileRequest profileRequest) {
+        return UserEntity.builder()
                 .email(profileRequest.getEmail())
                 .name(profileRequest.getName())
-                .passWord(profileRequest.getPassWord())
+                .passWord(passwordEncoder.encode(profileRequest.getPassWord()))
                 .userId(UUID.randomUUID().toString())
                 .isAccountVerified(false)
                 .resetOtpExpireAt(0L)

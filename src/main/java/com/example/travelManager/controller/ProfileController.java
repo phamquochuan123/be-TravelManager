@@ -7,14 +7,14 @@ import com.example.travelManager.domain.io.ProfileResponse;
 
 import com.example.travelManager.service.ProfileService;
 
+import jakarta.validation.Valid;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 
 @RestController
-@RequestMapping("/api/v1")
 public class ProfileController {
 
     private final ProfileService profileService;
@@ -25,7 +25,7 @@ public class ProfileController {
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    public ProfileResponse registResponse(@RequestBody ProfileRequest profileRequest) {
+    public ProfileResponse registResponse(@Valid @RequestBody ProfileRequest profileRequest) {
         ProfileResponse profileResponse = profileService.createProfile(profileRequest);
         return profileResponse;
 
