@@ -66,16 +66,27 @@ public class JwtRequestFilter extends OncePerRequestFilter {
         }
 
         // 3. validate the token and set security context
-        if (jwt != null) {
-            email = jwtUtil.extractEmail(jwt);
-            if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+        if (jwt != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            try {
+                email = jwtUtil.extractEmail(jwt);
+
                 UserDetails userDetails = appUserDetailsService.loadUserByUsername(email);
+
                 if (jwtUtil.validateToken(jwt, userDetails)) {
                     UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(
                             userDetails, null, userDetails.getAuthorities());
-                    authenticationToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+
+                    authenticationToken.setDetails(
+                            new WebAuthenticationDetailsSource().buildDetails(request));
+
                     SecurityContextHolder.getContext().setAuthentication(authenticationToken);
                 }
+
+            } catch (io.jsonwebtoken.ExpiredJwtException e) {
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType("application/json");
+                response.getWriter().write("{\"error\":\"JWT expired\"}");
+                return; // DỪNG FILTER
             }
         }
 
