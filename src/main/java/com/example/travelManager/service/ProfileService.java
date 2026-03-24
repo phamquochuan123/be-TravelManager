@@ -1,11 +1,13 @@
 package com.example.travelManager.service;
 
-import com.example.travelManager.domain.io.ProfileResponse;
-import com.example.travelManager.domain.io.ProfileRequest;
+import com.example.travelManager.domain.request.ProfileRequest;
+import com.example.travelManager.domain.response.ProfileResponse;
 
 public interface ProfileService {
 
     ProfileResponse createProfile(ProfileRequest profileRequest);
+
+    ProfileResponse setupAdmin(ProfileRequest profileRequest);
 
     ProfileResponse getProfile(String email);
 

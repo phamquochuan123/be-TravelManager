@@ -1,4 +1,4 @@
-package com.example.travelManager.domain.io;
+package com.example.travelManager.domain.request;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -10,7 +10,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Data
-
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder

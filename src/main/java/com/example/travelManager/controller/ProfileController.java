@@ -2,8 +2,8 @@ package com.example.travelManager.controller;
 
 import org.springframework.web.bind.annotation.RestController;
 
-import com.example.travelManager.domain.io.ProfileRequest;
-import com.example.travelManager.domain.io.ProfileResponse;
+import com.example.travelManager.domain.request.ProfileRequest;
+import com.example.travelManager.domain.response.ProfileResponse;
 import com.example.travelManager.service.EmailService;
 import com.example.travelManager.service.ProfileService;
 
@@ -34,6 +34,12 @@ public class ProfileController {
         ProfileResponse profileResponse = profileService.createProfile(profileRequest);
         emailService.sendWelcomeEmail(profileResponse.getEmail(), profileResponse.getName());
         return profileResponse;
+    }
+
+    @PostMapping("/admin/setup")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ProfileResponse setupAdmin(@Valid @RequestBody ProfileRequest profileRequest) {
+        return profileService.setupAdmin(profileRequest);
     }
 
     @GetMapping("/profile")

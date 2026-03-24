@@ -1,66 +1,66 @@
 package com.example.travelManager.domain;
 
 import java.time.Instant;
+import java.util.List;
 
 import com.example.travelManager.util.SecurityUtil;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
-import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
+import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-@Data
-@Entity
-@Table(name = "users")
-@NoArgsConstructor
-@AllArgsConstructor
 @Getter
 @Setter
-@Builder
-public class UserEntity {
+@Table(name = "permissions")
+@Entity
+@NoArgsConstructor
+public class Permission {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private long id;
 
-    @Column(unique = true)
-    private String userId;
-
+    @NotBlank(message = "Name không được để trống")
     private String name;
 
-    @Column(unique = true)
-    private String email;
+    @NotBlank(message = "ApiPath không được để trống")
+    private String apiPath;
 
-    private String passWord;
+    @NotBlank(message = "Method không được để trống")
+    private String method;
 
-    private String verifyOtp;
-    private Boolean isAccountVerified;
-    private long verifyOtpExpireAt;
-    private String resetOtp;
-    private long resetOtpExpireAt;
+    @NotBlank(message = "Module không được để trống")
+    private String module;
 
-    @ManyToOne
-    @JoinColumn(name = "role_id")
-    private Role role;
-
-    @Column(updatable = false)
     private Instant createdAt;
+
     private Instant updatedAt;
 
     private String createdBy;
+
     private String updatedBy;
+
+    public Permission(String name, String apiPath, String method, String module) {
+        this.name = name;
+        this.apiPath = apiPath;
+        this.method = method;
+        this.module = module;
+    }
+
+    @ManyToMany(fetch = FetchType.LAZY, mappedBy = "permissions")
+    @JsonIgnore
+    private List<Role> roles;
 
     @PrePersist
     public void handleBeforeCreate() {

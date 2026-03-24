@@ -49,6 +49,10 @@ dependencies {
 	runtimeOnly("com.mysql:mysql-connector-j")
 }
 
+tasks.withType<JavaCompile> {
+	options.compilerArgs.add("-parameters")
+}
+
 tasks.withType<Test> {
 	useJUnitPlatform()
 }

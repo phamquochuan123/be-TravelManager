@@ -1,4 +1,4 @@
-package com.example.travelManager.domain.io;
+package com.example.travelManager.domain.request;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;

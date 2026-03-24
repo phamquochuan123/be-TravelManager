@@ -3,32 +3,36 @@ package com.example.travelManager.service;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
+import com.example.travelManager.domain.Role;
 import com.example.travelManager.domain.UserEntity;
-import com.example.travelManager.domain.io.ProfileRequest;
-import com.example.travelManager.domain.io.ProfileResponse;
-
+import com.example.travelManager.domain.request.ProfileRequest;
+import com.example.travelManager.domain.response.ProfileResponse;
+import com.example.travelManager.exception.DuplicateResourceException;
+import com.example.travelManager.exception.InvalidOtpException;
+import com.example.travelManager.exception.OtpExpiredException;
+import com.example.travelManager.exception.ResourceNotFoundException;
+import com.example.travelManager.repository.RoleRepository;
 import com.example.travelManager.repository.UserRepository;
 
 @Service
-
 public class ProfileServiceImpl implements ProfileService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
+    private final RoleRepository roleRepository;
 
     public ProfileServiceImpl(UserRepository userRepository,
             PasswordEncoder passwordEncoder,
-            EmailService emailService) {
+            EmailService emailService,
+            RoleRepository roleRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
+        this.roleRepository = roleRepository;
     }
 
     @Override
@@ -38,7 +42,30 @@ public class ProfileServiceImpl implements ProfileService {
             newProfile = userRepository.save(newProfile);
             return convertToProfileResponse(newProfile);
         }
-        throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already exists");
+        throw new DuplicateResourceException("Email đã tồn tại");
+    }
+
+    @Override
+    public ProfileResponse setupAdmin(ProfileRequest profileRequest) {
+        Role adminRole = roleRepository.findByName("ADMIN");
+        if (userRepository.existsByRole(adminRole)) {
+            throw new DuplicateResourceException("Tài khoản admin đã tồn tại");
+        }
+        if (userRepository.existsByEmail(profileRequest.getEmail())) {
+            throw new DuplicateResourceException("Email đã tồn tại");
+        }
+        UserEntity admin = UserEntity.builder()
+                .email(profileRequest.getEmail())
+                .name(profileRequest.getName())
+                .passWord(passwordEncoder.encode(profileRequest.getPassWord()))
+                .userId(UUID.randomUUID().toString())
+                .isAccountVerified(true)
+                .resetOtpExpireAt(0L)
+                .verifyOtpExpireAt(0L)
+                .role(adminRole)
+                .build();
+        admin = userRepository.save(admin);
+        return convertToProfileResponse(admin);
     }
 
     private ProfileResponse convertToProfileResponse(UserEntity newProfile) {
@@ -47,10 +74,12 @@ public class ProfileServiceImpl implements ProfileService {
                 .email(newProfile.getEmail())
                 .userId(newProfile.getUserId())
                 .isAccountVerified(newProfile.getIsAccountVerified())
+                .roleName(newProfile.getRole() != null ? newProfile.getRole().getName() : null)
                 .build();
     }
 
     private UserEntity convertToUserDTO(ProfileRequest profileRequest) {
+        Role userRole = roleRepository.findByName("USER");
         return UserEntity.builder()
                 .email(profileRequest.getEmail())
                 .name(profileRequest.getName())
@@ -61,20 +90,21 @@ public class ProfileServiceImpl implements ProfileService {
                 .verifyOtp(null)
                 .verifyOtpExpireAt(0L)
                 .resetOtp(null)
+                .role(userRole)
                 .build();
     }
 
     @Override
     public ProfileResponse getProfile(String email) {
         UserEntity exitingUser = userRepository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy user: " + email));
         return convertToProfileResponse(exitingUser);
     }
 
     @Override
     public void sendResetOtp(String email) {
         UserEntity existingEntity = userRepository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy user: " + email));
 
         // generate 6 digit otp
         String otp = String.valueOf(ThreadLocalRandom.current().nextInt(100000, 1000000));
@@ -98,14 +128,14 @@ public class ProfileServiceImpl implements ProfileService {
     @Override
     public void resetPassword(String email, String otp, String newPassword) {
         UserEntity existingUser = userRepository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy user: " + email));
 
         if (existingUser.getResetOtp() == null || !existingUser.getResetOtp().equals(otp)) {
-            throw new RuntimeException("Invalid OTP");
+            throw new InvalidOtpException("OTP không hợp lệ");
         }
 
         if (existingUser.getResetOtpExpireAt() < System.currentTimeMillis()) {
-            throw new RuntimeException("OTP Expired");
+            throw new OtpExpiredException("OTP đã hết hạn");
         }
 
         existingUser.setPassWord(passwordEncoder.encode(newPassword));
@@ -118,7 +148,7 @@ public class ProfileServiceImpl implements ProfileService {
     @Override
     public void sendOtp(String email) {
         UserEntity existingUser = userRepository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy user: " + email));
 
         // generate 6 digit otp
         String otp = String.valueOf(ThreadLocalRandom.current().nextInt(100000, 1000000));
@@ -143,12 +173,12 @@ public class ProfileServiceImpl implements ProfileService {
     @Override
     public void verifyOtp(String email, String otp) {
         UserEntity existingUser = userRepository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy user: " + email));
         if (existingUser.getVerifyOtp() == null || !existingUser.getVerifyOtp().equals(otp)) {
-            throw new RuntimeException("Invalid OTP");
+            throw new InvalidOtpException("OTP không hợp lệ");
         }
         if (existingUser.getVerifyOtpExpireAt() < System.currentTimeMillis()) {
-            throw new RuntimeException("OTP Expired");
+            throw new OtpExpiredException("OTP đã hết hạn");
         }
 
         existingUser.setIsAccountVerified(true);

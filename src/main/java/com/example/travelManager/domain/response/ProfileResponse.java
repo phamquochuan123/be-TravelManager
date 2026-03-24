@@ -1,4 +1,4 @@
-package com.example.travelManager.domain.io;
+package com.example.travelManager.domain.response;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -17,5 +17,6 @@ public class ProfileResponse {
     private String name;
     private String email;
     private Boolean isAccountVerified;
+    private String roleName;
 
 }
