@@ -7,9 +7,12 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Optional;
 
+import javax.sql.rowset.serial.SerialBlob;
 import javax.sql.rowset.serial.SerialException;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,21 +25,26 @@ import com.example.travelManager.domain.Room;
 import com.example.travelManager.domain.response.hotel.BookingResponse;
 import com.example.travelManager.domain.response.hotel.RoomResponse;
 import com.example.travelManager.exception.PhotoRetrievalException;
+import com.example.travelManager.exception.ResourceNotFoundException;
 import com.example.travelManager.service.hotel.BookingService;
 import com.example.travelManager.service.hotel.IRoomService;
 
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/rooms")
 public class RoomController {
 
     private final IRoomService roomService;
     private final BookingService bookingService;
 
-    @PostMapping
+    @PostMapping("/rooms")
     public ResponseEntity<RoomResponse> addNewRoom(
             @RequestParam("photo") MultipartFile photo,
             @RequestParam("roomType") String roomType,
@@ -48,11 +56,12 @@ public class RoomController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/types")
-    public List<String> getRoomTyples() {
+    @GetMapping("/rooms/types")
+    public List<String> getRoomTypes() {
         return roomService.getAllRoomTypes();
     }
 
+    @GetMapping("/rooms")
     public ResponseEntity<List<RoomResponse>> getAllRooms() throws SQLException {
         List<Room> rooms = roomService.getAllRooms();
         List<RoomResponse> responses = new ArrayList<>();
@@ -66,6 +75,36 @@ public class RoomController {
             }
         }
         return ResponseEntity.ok(responses);
+    }
+
+    @DeleteMapping("/rooms/{roomId}")
+    public ResponseEntity<Void> deleteRoom(@PathVariable Long roomId) {
+        roomService.deleteRoom(roomId);
+        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+    }
+
+    @PutMapping("/rooms/{roomId}")
+    public ResponseEntity<RoomResponse> updateRoom(
+            @PathVariable Long roomId,
+            @RequestParam(required = false) String roomType,
+            @RequestParam(required = false) BigDecimal roomPrice,
+            @RequestParam(required = false) MultipartFile photo) throws IOException, SQLException {
+        byte[] photoBytes = photo != null && !photo.isEmpty() ? photo.getBytes()
+                : roomService.getRoomPhotoByRoomId(roomId);
+        Blob photoBlob = photoBytes != null && photoBytes.length > 0 ? new SerialBlob(photoBytes) : null;
+        Room theRoom = roomService.updateRoom(roomId, roomType, roomPrice, photoBytes);
+        theRoom.setPhoto(photoBlob);
+        RoomResponse response = getRoomResponse(theRoom);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/rooms/{roomId}")
+    public ResponseEntity<Optional<RoomResponse>> getRoomById(@PathVariable Long roomId) {
+        Optional<Room> theRoom = roomService.getRoomById(roomId);
+        return theRoom.map(room -> {
+            RoomResponse roomResponse = getRoomResponse(room);
+            return ResponseEntity.ok(Optional.of(roomResponse));
+        }).orElseThrow(() -> new ResourceNotFoundException("Room not found"));
     }
 
     private RoomResponse getRoomResponse(Room room) {

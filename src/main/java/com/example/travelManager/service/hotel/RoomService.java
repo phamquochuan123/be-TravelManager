@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.example.travelManager.domain.Room;
+import com.example.travelManager.exception.InternalServerException;
 import com.example.travelManager.exception.ResourceNotFoundException;
 import com.example.travelManager.repository.hotel.RoomRepository;
 
@@ -62,6 +63,41 @@ public class RoomService implements IRoomService {
             return photoBlob.getBytes(1, (int) photoBlob.length());
         }
         return null;
+    }
+
+    @Override
+    public void deleteRoom(Long roomId) {
+        Optional<Room> theRoom = roomRepository.findById(roomId);
+        if (theRoom.isPresent()) {
+            roomRepository.deleteById(roomId);
+        } else {
+            throw new ResourceNotFoundException("Sorry, Room not found!");
+        }
+    }
+
+    @Override
+    public Room updateRoom(Long roomId, String roomType, BigDecimal roomPrice, byte[] photoBytes) {
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ResourceNotFoundException("Room not found"));
+        if (roomType != null)
+            room.setRoomType(roomType);
+        if (roomPrice != null)
+            room.setRoomPrice(roomPrice);
+        if (photoBytes != null && photoBytes.length > 0) {
+            try {
+                room.setPhoto(new SerialBlob(photoBytes));
+            } catch (SQLException e) {
+                throw new InternalServerException("Error updating room ");
+            }
+        }
+
+        return roomRepository.save(room);
+
+    }
+
+    @Override
+    public Optional<Room> getRoomById(Long roomId) {
+        return roomRepository.findById(roomId);
     }
 
 }
