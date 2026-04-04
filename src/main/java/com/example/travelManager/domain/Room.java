@@ -7,19 +7,8 @@ import java.util.List;
 
 import org.apache.commons.lang3.RandomStringUtils;
 
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import jakarta.persistence.*;
+import lombok.*;
 
 @Getter
 @Setter
@@ -33,14 +22,33 @@ public class Room {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    private String roomNumber;
+
     private String roomType;
 
     private BigDecimal roomPrice;
 
-    private boolean isBooked = false;
+    @Enumerated(EnumType.STRING)
+    private RoomStatus status = RoomStatus.AVAILABLE;
+
+    @Column(name = "is_booked")
+    private boolean booked = false;
+
+    private int maxGuests;
+
+    private int numBeds;
+
+    private Double area;
+
+    @Column(columnDefinition = "TEXT")
+    private String description;
 
     @Lob
     private Blob photo;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "hotel_id")
+    private Hotel hotel;
 
     @OneToMany(mappedBy = "room", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     private List<BookedRoom> bookings = new ArrayList<>();
@@ -51,9 +59,9 @@ public class Room {
         }
         bookings.add(booking);
         booking.setRoom(this);
-        isBooked = true;
+        this.status = RoomStatus.BOOKED;
+        this.booked = true;
         String bookingCode = RandomStringUtils.randomNumeric(10);
         booking.setBookingConfirmationCode(bookingCode);
     }
-
 }

@@ -1,16 +1,18 @@
 package com.example.travelManager.service.hotel;
 
-import java.util.List;
-
+import com.example.travelManager.domain.BookedRoom;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import com.example.travelManager.domain.BookedRoom;
+import java.util.List;
 
 @Service
+@RequiredArgsConstructor
 public class BookingService {
 
-    public List<BookedRoom> getAllBookingsByRoomId(Long roomId) {
-        return null;
-    }
+    private final IBookedRoomService bookedRoomService;
 
+    public List<BookedRoom> getAllBookingsByRoomId(Long roomId) {
+        return bookedRoomService.getAllBookingsByRoomId(roomId);
+    }
 }

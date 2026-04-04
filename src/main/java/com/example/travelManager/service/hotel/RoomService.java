@@ -13,9 +13,12 @@ import javax.sql.rowset.serial.SerialException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.example.travelManager.domain.Hotel;
 import com.example.travelManager.domain.Room;
+import com.example.travelManager.domain.request.hotel.RoomCreateRequest;
 import com.example.travelManager.exception.InternalServerException;
 import com.example.travelManager.exception.ResourceNotFoundException;
+import com.example.travelManager.repository.hotel.HotelRepository;
 import com.example.travelManager.repository.hotel.RoomRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -25,6 +28,7 @@ import lombok.RequiredArgsConstructor;
 public class RoomService implements IRoomService {
 
     private final RoomRepository roomRepository;
+    private final HotelRepository hotelRepository;
 
     @Override
     public Room addNewRoom(MultipartFile file, String roomType, BigDecimal roomPrice)
@@ -100,4 +104,43 @@ public class RoomService implements IRoomService {
         return roomRepository.findById(roomId);
     }
 
+    @Override
+    public List<Room> getRoomsByHotelId(Long hotelId) {
+        return roomRepository.findByHotel_Id(hotelId);
+    }
+
+    @Override
+    public Room addRoomToHotel(Long hotelId, RoomCreateRequest request, MultipartFile photo)
+            throws IOException, SQLException {
+        Hotel hotel = hotelRepository.findById(hotelId)
+                .orElseThrow(() -> new ResourceNotFoundException("Hotel not found: " + hotelId));
+        Room room = new Room();
+        room.setHotel(hotel);
+        room.setRoomType(request.getRoomType());
+        room.setRoomPrice(request.getRoomPrice());
+        room.setRoomNumber(request.getRoomNumber());
+        room.setMaxGuests(request.getMaxGuests());
+        room.setNumBeds(request.getNumBeds());
+        room.setArea(request.getArea());
+        room.setDescription(request.getDescription());
+        if (photo != null && !photo.isEmpty()) {
+            room.setPhoto(new SerialBlob(photo.getBytes()));
+        }
+        return roomRepository.save(room);
+    }
+
+    @Override
+    public long countRoomsByHotelId(Long hotelId) {
+        return roomRepository.countByHotel_Id(hotelId);
+    }
+
+    @Override
+    public void deleteRoomFromHotel(Long hotelId, Long roomId) {
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ResourceNotFoundException("Room not found: " + roomId));
+        if (room.getHotel() == null || !room.getHotel().getId().equals(hotelId)) {
+            throw new IllegalArgumentException("Room does not belong to hotel " + hotelId);
+        }
+        roomRepository.deleteById(roomId);
+    }
 }

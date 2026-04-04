@@ -14,13 +14,15 @@ public class BookingResponse {
     private Long id;
     private LocalDate checkInDate;
     private LocalDate checkOutDate;
-    private String guestName;
+    private String guestFullName;
     private String guestEmail;
     private int numOfGuests;
     private int numOfChildren;
     private int totalNumOfGuests;
     private String bookingConfirmationCode;
     private RoomResponse room;
+    private Long hotelId;
+    private String hotelName;
 
     public BookingResponse(Long id, LocalDate checkInDate, LocalDate checkOutDate, String bookingConfirmationCode) {
         this.id = id;

@@ -11,6 +11,7 @@ import javax.sql.rowset.serial.SerialException;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.example.travelManager.domain.Room;
+import com.example.travelManager.domain.request.hotel.RoomCreateRequest;
 
 public interface IRoomService {
 
@@ -29,4 +30,12 @@ public interface IRoomService {
 
     Optional<Room> getRoomById(Long roomId);
 
+    List<Room> getRoomsByHotelId(Long hotelId);
+
+    Room addRoomToHotel(Long hotelId, RoomCreateRequest request, MultipartFile photo)
+            throws IOException, SQLException;
+
+    void deleteRoomFromHotel(Long hotelId, Long roomId);
+
+    long countRoomsByHotelId(Long hotelId);
 }
