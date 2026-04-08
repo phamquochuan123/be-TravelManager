@@ -1,6 +1,6 @@
 package com.example.travelManager.domain.response.hotel;
 
-import com.example.travelManager.domain.HotelType;
+import com.example.travelManager.util.constant.hotel.HotelType;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;

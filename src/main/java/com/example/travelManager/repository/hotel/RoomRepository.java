@@ -1,6 +1,6 @@
 package com.example.travelManager.repository.hotel;
 
-import com.example.travelManager.domain.Room;
+import com.example.travelManager.domain.hotel.Room;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;

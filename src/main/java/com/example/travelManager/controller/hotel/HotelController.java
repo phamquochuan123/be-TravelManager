@@ -1,7 +1,7 @@
 package com.example.travelManager.controller.hotel;
 
-import com.example.travelManager.domain.Hotel;
-import com.example.travelManager.domain.Room;
+import com.example.travelManager.domain.hotel.Hotel;
+import com.example.travelManager.domain.hotel.Room;
 import com.example.travelManager.domain.request.hotel.HotelRequest;
 import com.example.travelManager.domain.request.hotel.RoomCreateRequest;
 import com.example.travelManager.domain.response.hotel.HotelResponse;

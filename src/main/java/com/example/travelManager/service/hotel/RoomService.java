@@ -13,8 +13,8 @@ import javax.sql.rowset.serial.SerialException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.example.travelManager.domain.Hotel;
-import com.example.travelManager.domain.Room;
+import com.example.travelManager.domain.hotel.Hotel;
+import com.example.travelManager.domain.hotel.Room;
 import com.example.travelManager.domain.request.hotel.RoomCreateRequest;
 import com.example.travelManager.exception.InternalServerException;
 import com.example.travelManager.exception.ResourceNotFoundException;

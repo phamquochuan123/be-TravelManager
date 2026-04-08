@@ -1,4 +1,4 @@
-package com.example.travelManager.domain;
+package com.example.travelManager.domain.hotel;
 
 import java.math.BigDecimal;
 import java.sql.Blob;
@@ -7,6 +7,7 @@ import java.util.List;
 
 import org.apache.commons.lang3.RandomStringUtils;
 
+import com.example.travelManager.util.constant.hotel.RoomStatus;
 import jakarta.persistence.*;
 import lombok.*;
 

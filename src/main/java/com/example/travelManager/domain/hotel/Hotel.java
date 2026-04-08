@@ -1,5 +1,6 @@
-package com.example.travelManager.domain;
+package com.example.travelManager.domain.hotel;
 
+import com.example.travelManager.util.constant.hotel.HotelType;
 import jakarta.persistence.*;
 import lombok.*;
 

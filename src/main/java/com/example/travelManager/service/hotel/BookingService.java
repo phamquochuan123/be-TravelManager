@@ -1,6 +1,6 @@
 package com.example.travelManager.service.hotel;
 
-import com.example.travelManager.domain.BookedRoom;
+import com.example.travelManager.domain.hotel.BookedRoom;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

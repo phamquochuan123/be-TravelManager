@@ -1,6 +1,6 @@
 package com.example.travelManager.service.hotel;
 
-import com.example.travelManager.domain.Hotel;
+import com.example.travelManager.domain.hotel.Hotel;
 import com.example.travelManager.domain.request.hotel.HotelRequest;
 import org.springframework.web.multipart.MultipartFile;
 

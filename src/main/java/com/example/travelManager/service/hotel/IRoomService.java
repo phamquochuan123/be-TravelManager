@@ -10,7 +10,7 @@ import javax.sql.rowset.serial.SerialException;
 
 import org.springframework.web.multipart.MultipartFile;
 
-import com.example.travelManager.domain.Room;
+import com.example.travelManager.domain.hotel.Room;
 import com.example.travelManager.domain.request.hotel.RoomCreateRequest;
 
 public interface IRoomService {

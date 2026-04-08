@@ -1,6 +1,6 @@
 package com.example.travelManager.domain.request.hotel;
 
-import com.example.travelManager.domain.HotelType;
+import com.example.travelManager.util.constant.hotel.HotelType;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;

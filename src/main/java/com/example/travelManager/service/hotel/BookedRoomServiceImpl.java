@@ -1,8 +1,8 @@
 package com.example.travelManager.service.hotel;
 
-import com.example.travelManager.domain.BookedRoom;
-import com.example.travelManager.domain.Room;
-import com.example.travelManager.domain.RoomStatus;
+import com.example.travelManager.domain.hotel.BookedRoom;
+import com.example.travelManager.domain.hotel.Room;
+import com.example.travelManager.util.constant.hotel.RoomStatus;
 import com.example.travelManager.domain.request.hotel.BookingRequest;
 import com.example.travelManager.exception.ResourceNotFoundException;
 import com.example.travelManager.repository.hotel.BookedRoomRepository;

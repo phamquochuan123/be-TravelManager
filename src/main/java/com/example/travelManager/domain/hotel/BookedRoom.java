@@ -1,4 +1,4 @@
-package com.example.travelManager.domain;
+package com.example.travelManager.domain.hotel;
 
 import java.time.LocalDate;
 

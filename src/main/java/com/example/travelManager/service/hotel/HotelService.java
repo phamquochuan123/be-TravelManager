@@ -1,6 +1,6 @@
 package com.example.travelManager.service.hotel;
 
-import com.example.travelManager.domain.Hotel;
+import com.example.travelManager.domain.hotel.Hotel;
 import com.example.travelManager.domain.request.hotel.HotelRequest;
 import com.example.travelManager.exception.ResourceNotFoundException;
 import com.example.travelManager.repository.hotel.HotelRepository;

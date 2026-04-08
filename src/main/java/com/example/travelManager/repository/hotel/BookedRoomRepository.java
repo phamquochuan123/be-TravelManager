@@ -1,6 +1,6 @@
 package com.example.travelManager.repository.hotel;
 
-import com.example.travelManager.domain.BookedRoom;
+import com.example.travelManager.domain.hotel.BookedRoom;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.LocalDate;

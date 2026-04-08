@@ -22,8 +22,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.example.travelManager.domain.BookedRoom;
-import com.example.travelManager.domain.Room;
+import com.example.travelManager.domain.hotel.BookedRoom;
+import com.example.travelManager.domain.hotel.Room;
 import com.example.travelManager.domain.response.hotel.BookingResponse;
 import com.example.travelManager.domain.response.hotel.RoomResponse;
 import com.example.travelManager.exception.PhotoRetrievalException;
