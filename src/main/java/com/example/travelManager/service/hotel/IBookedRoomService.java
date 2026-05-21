@@ -8,6 +8,7 @@ import java.util.List;
 public interface IBookedRoomService {
     String bookRoom(Long hotelId, Long roomId, BookingRequest request);
     BookedRoom findByConfirmationCode(String confirmationCode);
+    List<BookedRoom> getAllBookings();
     List<BookedRoom> getAllBookingsByRoomId(Long roomId);
     List<BookedRoom> getAllBookingsByHotelId(Long hotelId);
     List<BookedRoom> getBookingsByGuestEmail(String email);

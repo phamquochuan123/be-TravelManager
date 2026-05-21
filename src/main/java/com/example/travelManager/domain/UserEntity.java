@@ -17,17 +17,13 @@ import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
-import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 @Data
 @Entity
 @Table(name = "users")
 @NoArgsConstructor
 @AllArgsConstructor
-@Getter
-@Setter
 @Builder
 public class UserEntity {
 
@@ -50,6 +46,19 @@ public class UserEntity {
     private long verifyOtpExpireAt;
     private String resetOtp;
     private long resetOtpExpireAt;
+    // Đếm số lần nhập OTP sai liên tiếp để chống brute-force
+    @Builder.Default
+    private int otpAttempts = 0;
+
+    private String phone;
+
+    @Column(columnDefinition = "LONGBLOB")
+    private byte[] avatar;
+
+    @Builder.Default
+    private Boolean isActive = true;
+
+    private String lockReason;
 
     @ManyToOne
     @JoinColumn(name = "role_id")

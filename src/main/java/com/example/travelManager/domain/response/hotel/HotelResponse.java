@@ -18,8 +18,6 @@ public class HotelResponse {
     private int starRating;
     private HotelType hotelType;
     private String amenities;
-    private Double latitude;
-    private Double longitude;
     private boolean isActive;
     private int totalRooms;
     private byte[] photo;

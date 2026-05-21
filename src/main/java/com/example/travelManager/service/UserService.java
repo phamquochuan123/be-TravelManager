@@ -51,6 +51,22 @@ public class UserService {
         userRepository.deleteById(id);
     }
 
+    public UserResponse lockUser(long id, String reason) {
+        UserEntity user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User không tồn tại"));
+        user.setIsActive(false);
+        user.setLockReason(reason);
+        return toResponse(userRepository.save(user));
+    }
+
+    public UserResponse unlockUser(long id) {
+        UserEntity user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User không tồn tại"));
+        user.setIsActive(true);
+        user.setLockReason(null);
+        return toResponse(userRepository.save(user));
+    }
+
     private UserResponse toResponse(UserEntity user) {
         return UserResponse.builder()
                 .id(user.getId())
@@ -59,6 +75,9 @@ public class UserService {
                 .email(user.getEmail())
                 .isAccountVerified(user.getIsAccountVerified())
                 .roleName(user.getRole() != null ? user.getRole().getName() : null)
+                .phone(user.getPhone())
+                .isActive(user.getIsActive())
+                .lockReason(user.getLockReason())
                 .build();
     }
 }

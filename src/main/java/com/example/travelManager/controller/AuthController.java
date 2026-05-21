@@ -3,6 +3,7 @@ package com.example.travelManager.controller;
 import java.time.Duration;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
@@ -32,6 +33,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 @RestController
 public class AuthController {
 
+    // false khi dev (HTTP localhost), set true khi deploy HTTPS production
+    @Value("${app.cookie.secure:false}")
+    private boolean cookieSecure;
+
     private final AuthenticationManager authenticationManager;
     private final AppUserDetailsService appUserDetailsService;
     private final JwtUtil jwtUtil;
@@ -53,7 +58,7 @@ public class AuthController {
         final String jwtToken = jwtUtil.generateToken(userDetails);
         ResponseCookie cookie = ResponseCookie.from("jwt", jwtToken)
                 .httpOnly(true)
-                .secure(false)
+                .secure(cookieSecure)
                 .path("/")
                 .maxAge(Duration.ofDays(1))
                 .sameSite("Strict")
@@ -85,15 +90,29 @@ public class AuthController {
     }
 
     @PostMapping("/send-otp")
-    public void sendVerifyOtp(@CurrentSecurityContext(expression = "authentication?.name") String email) {
+    public void sendVerifyOtp(@RequestBody(required = false) Map<String, Object> body,
+            @CurrentSecurityContext(expression = "authentication?.name") String authEmail) {
+        String email = (authEmail != null && !authEmail.equals("anonymousUser"))
+                ? authEmail
+                : (body != null ? (String) body.get("email") : null);
+        if (email == null || email.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thiếu thông tin email");
+        }
         profileService.sendOtp(email);
     }
 
     @PostMapping("/verify-otp")
     public void verifyEmail(@RequestBody Map<String, Object> request,
-            @CurrentSecurityContext(expression = "authentication?.name") String email) {
+            @CurrentSecurityContext(expression = "authentication?.name") String authEmail) {
         if (request.get("otp") == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thiếu OTP");
+        }
+        // Ưu tiên email từ SecurityContext (đã login), fallback về email trong body (mới đăng ký)
+        String email = (authEmail != null && !authEmail.equals("anonymousUser"))
+                ? authEmail
+                : (String) request.get("email");
+        if (email == null || email.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thiếu thông tin email");
         }
         profileService.verifyOtp(email, request.get("otp").toString());
     }
@@ -102,7 +121,7 @@ public class AuthController {
     public ResponseEntity<?> logout(HttpServletResponse response) {
         ResponseCookie cookie = ResponseCookie.from("jwt", "")
                 .httpOnly(true)
-                .secure(false)
+                .secure(cookieSecure)
                 .path("/")
                 .maxAge(0)
                 .sameSite("Strict")

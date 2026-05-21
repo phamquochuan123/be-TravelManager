@@ -147,8 +147,6 @@ public class HotelController {
         res.setStarRating(hotel.getStarRating());
         res.setHotelType(hotel.getHotelType());
         res.setAmenities(hotel.getAmenities());
-        res.setLatitude(hotel.getLatitude());
-        res.setLongitude(hotel.getLongitude());
         res.setActive(hotel.isActive());
         res.setTotalRooms((int) roomService.countRoomsByHotelId(hotel.getId()));
         res.setPhoto(photoBytes);

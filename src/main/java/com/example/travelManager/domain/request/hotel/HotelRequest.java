@@ -28,9 +28,5 @@ public class HotelRequest {
 
     private String amenities;
 
-    private Double latitude;
-
-    private Double longitude;
-
     private Boolean isActive;
 }

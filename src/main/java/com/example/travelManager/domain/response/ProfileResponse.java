@@ -18,5 +18,9 @@ public class ProfileResponse {
     private String email;
     private Boolean isAccountVerified;
     private String roleName;
+    private String phone;
+    private String avatar;
+    private Boolean isActive;
+    private String lockReason;
 
 }

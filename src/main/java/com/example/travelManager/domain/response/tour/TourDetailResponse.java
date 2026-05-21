@@ -25,6 +25,7 @@ public class TourDetailResponse {
     private String cancellationPolicy;
     private String includedServices;
     private Double averageRating;
+    private List<TourImageResponse> images;
     private List<TourItineraryResponse> itineraries;
     private List<TourDepartureResponse> departures;
 }

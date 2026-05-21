@@ -11,6 +11,7 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import com.example.travelManager.repository.UserRepository;
 import com.example.travelManager.util.JwtUtil;
 
 import jakarta.servlet.FilterChain;
@@ -23,13 +24,15 @@ import jakarta.servlet.http.HttpServletResponse;
 public class JwtRequestFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
+    private final UserRepository userRepository;
 
-    public JwtRequestFilter(JwtUtil jwtUtil) {
+    public JwtRequestFilter(JwtUtil jwtUtil, UserRepository userRepository) {
         this.jwtUtil = jwtUtil;
+        this.userRepository = userRepository;
     }
 
     private static final List<String> PUBLIC_URLS = List.of("/login", "/register", "/send-reset-otp", "/reset-password",
-            "/logout");
+            "/logout", "/verify-otp", "/send-otp", "/admin/setup");
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -69,6 +72,18 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                 email = jwtUtil.extractEmail(jwt);
 
                 if (email != null && !jwtUtil.isTokenExpired(jwt)) {
+                    // Kiểm tra tài khoản có bị khoá không
+                    var userOpt = userRepository.findByEmail(email);
+                    if (userOpt.isPresent() && Boolean.FALSE.equals(userOpt.get().getIsActive())) {
+                        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                        response.setContentType("application/json;charset=UTF-8");
+                        String reason = userOpt.get().getLockReason() != null ? userOpt.get().getLockReason() : "";
+                        String safeReason = reason.replace("\\", "\\\\").replace("\"", "\\\"")
+                                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
+                        response.getWriter().write("{\"error\":\"Tài khoản đã bị khoá\",\"reason\":\"" + safeReason + "\"}");
+                        return;
+                    }
+
                     List<SimpleGrantedAuthority> authorities = jwtUtil.extractRoles(jwt).stream()
                             .map(SimpleGrantedAuthority::new)
                             .collect(Collectors.toList());

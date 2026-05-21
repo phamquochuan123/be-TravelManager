@@ -11,11 +11,13 @@ import com.example.travelManager.domain.tour.Tour;
 import com.example.travelManager.domain.tour.TourDeparture;
 import com.example.travelManager.domain.tour.TourImage;
 import com.example.travelManager.domain.tour.TourItinerary;
+import com.example.travelManager.util.constant.tour.BookingStatus;
 import com.example.travelManager.util.constant.tour.TourStatus;
 import com.example.travelManager.domain.request.tour.TourDepartureRequest;
 import com.example.travelManager.domain.request.tour.TourItineraryRequest;
 import com.example.travelManager.domain.request.tour.TourRequest;
 import com.example.travelManager.exception.ResourceNotFoundException;
+import com.example.travelManager.repository.tour.TourBookingRepository;
 import com.example.travelManager.repository.tour.TourDepartureRepository;
 import com.example.travelManager.repository.tour.TourImageRepository;
 import com.example.travelManager.repository.tour.TourItineraryRepository;
@@ -31,6 +33,7 @@ public class TourService implements ITourService {
     private final TourItineraryRepository itineraryRepository;
     private final TourDepartureRepository departureRepository;
     private final TourImageRepository imageRepository;
+    private final TourBookingRepository bookingRepository;
 
     // ── Tour CRUD ────────────────────────────────────────────────
 
@@ -55,6 +58,11 @@ public class TourService implements ITourService {
     @Override
     public void deleteTour(Long tourId) {
         Tour tour = getTourById(tourId);
+        boolean hasActiveBookings = bookingRepository.existsByTourIdAndStatusIn(
+                tourId, List.of(BookingStatus.PENDING, BookingStatus.CONFIRMED));
+        if (hasActiveBookings) {
+            throw new IllegalStateException("Không thể xóa tour đang có booking hoạt động");
+        }
         tour.setDeleted(true);
         tour.setStatus(TourStatus.DELETED);
         tourRepository.save(tour);

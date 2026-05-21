@@ -11,9 +11,13 @@ public interface TourBookingRepository extends JpaRepository<TourBooking, Long> 
 
     List<TourBooking> findByUserId(Long userId);
 
+    List<TourBooking> findByUserEmailOrderByCreatedAtDesc(String email);
+
     List<TourBooking> findByTourId(Long tourId);
 
     List<TourBooking> findByDepartureId(Long departureId);
+
+    List<TourBooking> findAllByOrderByCreatedAtDesc();
 
     boolean existsByTourIdAndStatusIn(Long tourId, List<BookingStatus> statuses);
 }

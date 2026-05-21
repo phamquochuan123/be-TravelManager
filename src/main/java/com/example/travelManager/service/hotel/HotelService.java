@@ -29,8 +29,6 @@ public class HotelService implements IHotelService {
         hotel.setStarRating(request.getStarRating());
         hotel.setHotelType(request.getHotelType());
         hotel.setAmenities(request.getAmenities());
-        hotel.setLatitude(request.getLatitude());
-        hotel.setLongitude(request.getLongitude());
         hotel.setCreatedBy(createdBy);
         hotel.setUpdatedBy(createdBy);
         return hotelRepository.save(hotel);
@@ -46,8 +44,6 @@ public class HotelService implements IHotelService {
         hotel.setStarRating(request.getStarRating());
         hotel.setHotelType(request.getHotelType());
         hotel.setAmenities(request.getAmenities());
-        hotel.setLatitude(request.getLatitude());
-        hotel.setLongitude(request.getLongitude());
         if (request.getIsActive() != null) {
             hotel.setActive(request.getIsActive());
         }

@@ -39,10 +39,6 @@ public class Hotel {
     @Column(columnDefinition = "TEXT")
     private String amenities;
 
-    private Double latitude;
-
-    private Double longitude;
-
     private boolean isActive = true;
 
     @Lob

@@ -15,4 +15,5 @@ public interface BookedRoomRepository extends JpaRepository<BookedRoom, Long> {
     List<BookedRoom> findByRoom_IdAndCheckOutDateAfterAndCheckInDateBefore(
             Long roomId, LocalDate newCheckInDate, LocalDate newCheckOutDate);
     List<BookedRoom> findByRoom_Hotel_Id(Long hotelId);
+    boolean existsByRoom_Id(Long roomId);
 }

@@ -18,4 +18,7 @@ public class UserResponse {
     private String email;
     private Boolean isAccountVerified;
     private String roleName;
+    private String phone;
+    private Boolean isActive;
+    private String lockReason;
 }

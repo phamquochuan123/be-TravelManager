@@ -23,6 +23,8 @@ public class BookingResponse {
     private RoomResponse room;
     private Long hotelId;
     private String hotelName;
+    private String roomType;
+    private String status;
 
     public BookingResponse(Long id, LocalDate checkInDate, LocalDate checkOutDate, String bookingConfirmationCode) {
         this.id = id;

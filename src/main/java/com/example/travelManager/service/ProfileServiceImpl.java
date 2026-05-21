@@ -69,12 +69,20 @@ public class ProfileServiceImpl implements ProfileService {
     }
 
     private ProfileResponse convertToProfileResponse(UserEntity newProfile) {
+        String avatarBase64 = null;
+        if (newProfile.getAvatar() != null) {
+            avatarBase64 = java.util.Base64.getEncoder().encodeToString(newProfile.getAvatar());
+        }
         return ProfileResponse.builder()
                 .name(newProfile.getName())
                 .email(newProfile.getEmail())
                 .userId(newProfile.getUserId())
                 .isAccountVerified(newProfile.getIsAccountVerified())
                 .roleName(newProfile.getRole() != null ? newProfile.getRole().getName() : null)
+                .phone(newProfile.getPhone())
+                .avatar(avatarBase64)
+                .isActive(newProfile.getIsActive())
+                .lockReason(newProfile.getLockReason())
                 .build();
     }
 
@@ -112,9 +120,10 @@ public class ProfileServiceImpl implements ProfileService {
         // calculate expiry time (current time + 15 minutes in milliseconds)
         long expiryTime = System.currentTimeMillis() + (15 * 60 * 1000);
 
-        // update the profile/user
+        // update the profile/user, reset attempts counter
         existingEntity.setResetOtp(otp);
         existingEntity.setResetOtpExpireAt(expiryTime);
+        existingEntity.setOtpAttempts(0);
 
         // save into the database
         userRepository.save(existingEntity);
@@ -130,18 +139,29 @@ public class ProfileServiceImpl implements ProfileService {
         UserEntity existingUser = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy user: " + email));
 
-        if (existingUser.getResetOtp() == null || !existingUser.getResetOtp().equals(otp)) {
-            throw new InvalidOtpException("OTP không hợp lệ");
+        if (existingUser.getOtpAttempts() >= MAX_OTP_ATTEMPTS) {
+            existingUser.setResetOtp(null);
+            existingUser.setResetOtpExpireAt(0L);
+            existingUser.setOtpAttempts(0);
+            userRepository.save(existingUser);
+            throw new InvalidOtpException("Nhập sai quá " + MAX_OTP_ATTEMPTS + " lần. Vui lòng yêu cầu OTP mới.");
         }
 
         if (existingUser.getResetOtpExpireAt() < System.currentTimeMillis()) {
             throw new OtpExpiredException("OTP đã hết hạn");
         }
 
+        if (existingUser.getResetOtp() == null || !existingUser.getResetOtp().equals(otp)) {
+            existingUser.setOtpAttempts(existingUser.getOtpAttempts() + 1);
+            userRepository.save(existingUser);
+            int remaining = MAX_OTP_ATTEMPTS - existingUser.getOtpAttempts();
+            throw new InvalidOtpException("OTP không hợp lệ. Còn " + remaining + " lần thử.");
+        }
+
         existingUser.setPassWord(passwordEncoder.encode(newPassword));
         existingUser.setResetOtp(null);
         existingUser.setResetOtpExpireAt(0L);
-
+        existingUser.setOtpAttempts(0);
         userRepository.save(existingUser);
     }
 
@@ -156,9 +176,10 @@ public class ProfileServiceImpl implements ProfileService {
         // calculate expiry time (current time + 24 hours in milliseconds)
         long expiryTime = System.currentTimeMillis() + (24 * 60 * 60 * 1000);
 
-        // Update the user entity
+        // Update the user entity, reset attempts counter
         existingUser.setVerifyOtp(otp);
         existingUser.setVerifyOtpExpireAt(expiryTime);
+        existingUser.setOtpAttempts(0);
 
         // save to database
         userRepository.save(existingUser);
@@ -170,22 +191,66 @@ public class ProfileServiceImpl implements ProfileService {
         }
     }
 
+    private static final int MAX_OTP_ATTEMPTS = 5;
+
     @Override
     public void verifyOtp(String email, String otp) {
         UserEntity existingUser = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy user: " + email));
-        if (existingUser.getVerifyOtp() == null || !existingUser.getVerifyOtp().equals(otp)) {
-            throw new InvalidOtpException("OTP không hợp lệ");
+
+        // Kiểm tra quá số lần retry → xóa OTP, bắt user gửi lại
+        if (existingUser.getOtpAttempts() >= MAX_OTP_ATTEMPTS) {
+            existingUser.setVerifyOtp(null);
+            existingUser.setVerifyOtpExpireAt(0L);
+            existingUser.setOtpAttempts(0);
+            userRepository.save(existingUser);
+            throw new InvalidOtpException("Nhập sai quá " + MAX_OTP_ATTEMPTS + " lần. Vui lòng yêu cầu OTP mới.");
         }
+
         if (existingUser.getVerifyOtpExpireAt() < System.currentTimeMillis()) {
             throw new OtpExpiredException("OTP đã hết hạn");
+        }
+
+        if (existingUser.getVerifyOtp() == null || !existingUser.getVerifyOtp().equals(otp)) {
+            existingUser.setOtpAttempts(existingUser.getOtpAttempts() + 1);
+            userRepository.save(existingUser);
+            int remaining = MAX_OTP_ATTEMPTS - existingUser.getOtpAttempts();
+            throw new InvalidOtpException("OTP không hợp lệ. Còn " + remaining + " lần thử.");
         }
 
         existingUser.setIsAccountVerified(true);
         existingUser.setVerifyOtp(null);
         existingUser.setVerifyOtpExpireAt(0L);
-
+        existingUser.setOtpAttempts(0);
         userRepository.save(existingUser);
+    }
+
+    @Override
+    public ProfileResponse updateProfile(String email, String name, String phone) {
+        UserEntity user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy user: " + email));
+        if (name != null && !name.isBlank()) user.setName(name);
+        if (phone != null) user.setPhone(phone);
+        return convertToProfileResponse(userRepository.save(user));
+    }
+
+    @Override
+    public ProfileResponse updateAvatar(String email, byte[] avatarData) {
+        UserEntity user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy user: " + email));
+        user.setAvatar(avatarData);
+        return convertToProfileResponse(userRepository.save(user));
+    }
+
+    @Override
+    public void changePassword(String email, String currentPassword, String newPassword) {
+        UserEntity user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy user: " + email));
+        if (!passwordEncoder.matches(currentPassword, user.getPassWord())) {
+            throw new IllegalArgumentException("Mật khẩu hiện tại không đúng");
+        }
+        user.setPassWord(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
     }
 
 }

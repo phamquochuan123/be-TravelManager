@@ -48,6 +48,11 @@ public class TourReview {
     @Column(columnDefinition = "TEXT")
     private String comment;
 
+    @Column(columnDefinition = "TEXT")
+    private String adminReply;
+
+    private boolean isHidden = false;
+
     private Instant createdAt;
 
     @PrePersist

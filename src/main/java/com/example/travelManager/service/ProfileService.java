@@ -19,4 +19,10 @@ public interface ProfileService {
 
     void verifyOtp(String email, String otp);
 
+    ProfileResponse updateProfile(String email, String name, String phone);
+
+    void changePassword(String email, String currentPassword, String newPassword);
+
+    ProfileResponse updateAvatar(String email, byte[] avatarData);
+
 }

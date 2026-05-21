@@ -2,6 +2,7 @@ package com.example.travelManager.domain.tour;
 
 import java.time.LocalDate;
 
+import com.example.travelManager.domain.UserEntity;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -34,4 +35,8 @@ public class TourDeparture {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "tour_id")
     private Tour tour;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "staff_id")
+    private UserEntity staff;
 }

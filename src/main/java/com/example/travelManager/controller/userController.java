@@ -1,10 +1,12 @@
 package com.example.travelManager.controller;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -47,5 +49,17 @@ public class UserController {
     public ResponseEntity<Void> deleteUser(@PathVariable("id") long id) {
         userService.deleteUser(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{id}/lock")
+    public ResponseEntity<UserResponse> lockUser(@PathVariable long id,
+            @RequestBody Map<String, String> body) {
+        String reason = body.getOrDefault("reason", "");
+        return ResponseEntity.ok(userService.lockUser(id, reason));
+    }
+
+    @PatchMapping("/{id}/unlock")
+    public ResponseEntity<UserResponse> unlockUser(@PathVariable long id) {
+        return ResponseEntity.ok(userService.unlockUser(id));
     }
 }

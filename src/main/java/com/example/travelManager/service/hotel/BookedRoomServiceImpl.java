@@ -29,8 +29,8 @@ public class BookedRoomServiceImpl implements IBookedRoomService {
             throw new IllegalArgumentException("Room " + roomId + " does not belong to hotel " + hotelId);
         }
 
-        if (room.getStatus() != RoomStatus.AVAILABLE) {
-            throw new IllegalStateException("Phòng này hiện không còn trống");
+        if (room.getStatus() == RoomStatus.MAINTENANCE) {
+            throw new IllegalStateException("Phòng đang bảo trì, không thể đặt");
         }
 
         // Check-in lúc 14:00 — phải đặt trước ít nhất 12 tiếng (trước 02:00 cùng ngày)
@@ -71,6 +71,11 @@ public class BookedRoomServiceImpl implements IBookedRoomService {
     }
 
     @Override
+    public List<BookedRoom> getAllBookings() {
+        return bookedRoomRepository.findAll();
+    }
+
+    @Override
     public List<BookedRoom> getAllBookingsByRoomId(Long roomId) {
         return bookedRoomRepository.findByRoom_Id(roomId);
     }
@@ -91,10 +96,14 @@ public class BookedRoomServiceImpl implements IBookedRoomService {
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + bookingId));
 
         Room room = booking.getRoom();
-        room.setStatus(RoomStatus.AVAILABLE);
-        room.setBooked(false);
-        roomRepository.save(room);
-
         bookedRoomRepository.deleteById(bookingId);
+
+        // Only free the room if no other bookings remain for it
+        boolean hasOtherBookings = bookedRoomRepository.existsByRoom_Id(room.getId());
+        if (!hasOtherBookings) {
+            room.setStatus(RoomStatus.AVAILABLE);
+            room.setBooked(false);
+            roomRepository.save(room);
+        }
     }
 }
