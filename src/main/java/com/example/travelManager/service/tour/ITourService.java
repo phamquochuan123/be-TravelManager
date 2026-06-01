@@ -26,6 +26,8 @@ public interface ITourService {
 
     List<Tour> getAllToursAdmin(); // bao gom ca inactive
 
+    Tour toggleActive(Long tourId);
+
     // --- Itinerary ---
     TourItinerary addItinerary(Long tourId, TourItineraryRequest request);
 

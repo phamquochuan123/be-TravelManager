@@ -1,5 +1,7 @@
 package com.example.travelManager.controller;
 
+import java.time.LocalDate;
+
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.travelManager.domain.request.ProfileRequest;
@@ -59,7 +61,8 @@ public class ProfileController {
     public ProfileResponse updateProfile(
             @CurrentSecurityContext(expression = "authentication?.name") String email,
             @RequestBody UpdateProfileRequest request) {
-        return profileService.updateProfile(email, request.getName(), request.getPhone());
+        return profileService.updateProfile(email, request.getName(), request.getPhone(),
+                request.getBirthDate(), request.getGender());
     }
 
     @PatchMapping(value = "/profile/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -82,6 +85,8 @@ public class ProfileController {
     static class UpdateProfileRequest {
         private String name;
         private String phone;
+        private LocalDate birthDate;
+        private String gender;
     }
 
     @Data

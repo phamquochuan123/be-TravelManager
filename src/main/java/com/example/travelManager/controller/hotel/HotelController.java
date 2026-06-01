@@ -122,6 +122,31 @@ public class HotelController {
         return ResponseEntity.status(HttpStatus.CREATED).body(toRoomResponse(room, hotelId));
     }
 
+    @PutMapping(value = "/{hotelId}/rooms/{roomId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<RoomResponse> updateRoomInHotel(
+            @PathVariable("hotelId") Long hotelId,
+            @PathVariable("roomId") Long roomId,
+            @RequestParam("roomType") String roomType,
+            @RequestParam("roomPrice") BigDecimal roomPrice,
+            @RequestParam(value = "roomNumber", required = false) String roomNumber,
+            @RequestParam(value = "maxGuests", defaultValue = "2") int maxGuests,
+            @RequestParam(value = "numBeds", defaultValue = "1") int numBeds,
+            @RequestParam(value = "area", required = false) Double area,
+            @RequestParam(value = "description", required = false) String description,
+            @RequestParam(value = "photo", required = false) MultipartFile photo)
+            throws IOException, SQLException {
+        RoomCreateRequest req = new RoomCreateRequest();
+        req.setRoomType(roomType);
+        req.setRoomPrice(roomPrice);
+        req.setRoomNumber(roomNumber);
+        req.setMaxGuests(maxGuests);
+        req.setNumBeds(numBeds);
+        req.setArea(area);
+        req.setDescription(description);
+        Room room = roomService.updateRoomInHotel(hotelId, roomId, req, photo);
+        return ResponseEntity.ok(toRoomResponse(room, hotelId));
+    }
+
     @DeleteMapping("/{hotelId}/rooms/{roomId}")
     public ResponseEntity<Void> deleteRoomFromHotel(
             @PathVariable("hotelId") Long hotelId,

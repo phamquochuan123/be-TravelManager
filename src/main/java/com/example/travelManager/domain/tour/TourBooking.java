@@ -72,6 +72,9 @@ public class TourBooking {
     @Column(columnDefinition = "TEXT")
     private String note;
 
+    @Column(name = "admin_note")
+    private String adminNote;
+
     private Instant createdAt;
     private Instant updatedAt;
 

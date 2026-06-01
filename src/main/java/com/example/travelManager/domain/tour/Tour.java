@@ -49,8 +49,15 @@ public class Tour {
     private BigDecimal priceAdult;
     private BigDecimal priceChild;
 
-    private int durationDays; // so ngay
-    private int maxSlots;     // suc chua toi da
+    private int durationDays;   // so ngay
+    private int durationNights; // so dem
+    private int maxSlots;       // suc chua toi da
+
+    @Column(columnDefinition = "TEXT")
+    private String linkedHotels;      // JSON array of linked hotel IDs
+
+    @Column(columnDefinition = "TEXT")
+    private String linkedRestaurants; // JSON array of linked restaurant IDs
 
     @Enumerated(EnumType.STRING)
     private TourType tourType; // DOMESTIC / INTERNATIONAL

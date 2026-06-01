@@ -52,6 +52,9 @@ public class RestaurantBooking {
     @Column(unique = true)
     private String confirmationCode;
 
+    @Column(name = "admin_note")
+    private String adminNote;
+
     private Instant createdAt;
     private Instant updatedAt;
 

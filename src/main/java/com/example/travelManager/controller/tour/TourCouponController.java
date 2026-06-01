@@ -32,7 +32,7 @@ public class TourCouponController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<TourCouponResponse> getById(@PathVariable Long id) {
+    public ResponseEntity<TourCouponResponse> getById(@PathVariable("id") Long id) {
         TourCoupon coupon = couponRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Coupon not found: " + id));
         return ResponseEntity.ok(toResponse(coupon));
@@ -50,7 +50,7 @@ public class TourCouponController {
 
     @PutMapping("/{id}")
     public ResponseEntity<TourCouponResponse> update(
-            @PathVariable Long id,
+            @PathVariable("id") Long id,
             @Valid @RequestBody TourCouponRequest request) {
         TourCoupon coupon = couponRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Coupon not found: " + id));
@@ -64,7 +64,7 @@ public class TourCouponController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public ResponseEntity<Void> delete(@PathVariable("id") Long id) {
         if (!couponRepository.existsById(id)) {
             throw new ResourceNotFoundException("Coupon not found: " + id);
         }
@@ -137,3 +137,4 @@ public class TourCouponController {
         return res;
     }
 }
+

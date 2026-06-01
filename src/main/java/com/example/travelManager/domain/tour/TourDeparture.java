@@ -3,7 +3,11 @@ package com.example.travelManager.domain.tour;
 import java.time.LocalDate;
 
 import com.example.travelManager.domain.UserEntity;
+import com.example.travelManager.util.constant.tour.TourDepartureStatus;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -31,6 +35,13 @@ public class TourDeparture {
     private LocalDate departureDate;
 
     private int availableSlots; // so cho con lai
+
+    @Column(nullable = false, columnDefinition = "INT DEFAULT 0")
+    private int maxSlots;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, columnDefinition = "VARCHAR(20) DEFAULT 'SCHEDULED'")
+    private TourDepartureStatus status = TourDepartureStatus.SCHEDULED;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "tour_id")

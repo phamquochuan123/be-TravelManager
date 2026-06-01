@@ -1,6 +1,7 @@
 package com.example.travelManager.domain;
 
 import java.time.Instant;
+import java.time.LocalDate;
 
 import com.example.travelManager.util.SecurityUtil;
 
@@ -51,6 +52,10 @@ public class UserEntity {
     private int otpAttempts = 0;
 
     private String phone;
+
+    private LocalDate birthDate;
+
+    private String gender; // MALE | FEMALE | OTHER
 
     @Column(columnDefinition = "LONGBLOB")
     private byte[] avatar;

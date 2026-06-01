@@ -57,9 +57,17 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/payment/ipn", "/payment/result").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/payment/create").authenticated()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/payment/my").authenticated()
-                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/admin/payments").hasRole("ADMIN")
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/payment/admin/payments").hasRole("ADMIN")
                         .requestMatchers(org.springframework.http.HttpMethod.PATCH,
                                 "/admin/users/*/lock", "/admin/users/*/unlock").hasRole("ADMIN")
+                        // Incident reports
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/incident-reports").hasAnyRole("ADMIN", "STAFF")
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/incident-reports/my").hasAnyRole("ADMIN", "STAFF")
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/incident-reports/admin/all").hasRole("ADMIN")
+                        .requestMatchers(org.springframework.http.HttpMethod.PATCH, "/incident-reports/*/status").hasRole("ADMIN")
+                        // Export PDF/Excel
+                        .requestMatchers("/admin/export/**").hasRole("ADMIN")
+                        .requestMatchers(org.springframework.http.HttpMethod.PATCH, "/admin/orders/*/status").hasAnyRole("ADMIN", "STAFF")
                         .requestMatchers("/admin/**").hasRole("ADMIN")
                         .requestMatchers("/staff/**").hasAnyRole("ADMIN", "STAFF")
                         // Hotel & Tour: GET public, booking authenticated, POST/PUT/DELETE chỉ ADMIN hoặc STAFF
@@ -84,11 +92,19 @@ public class SecurityConfig {
                                 "/restaurants/**", "/destinations/**").hasAnyRole("ADMIN", "STAFF")
                         .requestMatchers(org.springframework.http.HttpMethod.DELETE,
                                 "/restaurants/**", "/destinations/**").hasAnyRole("ADMIN", "STAFF")
+                        // Tours CRUD (GET đã permitAll ở trên; review/booking có rule riêng bên dưới)
+                        .requestMatchers(org.springframework.http.HttpMethod.POST,
+                                "/tours", "/tours/*/itineraries", "/tours/*/departures", "/tours/*/images").hasAnyRole("ADMIN", "STAFF")
+                        .requestMatchers(org.springframework.http.HttpMethod.PUT, "/tours/**").hasAnyRole("ADMIN", "STAFF")
+                        .requestMatchers(org.springframework.http.HttpMethod.PATCH, "/tours/*/active").hasAnyRole("ADMIN", "STAFF")
+                        .requestMatchers(org.springframework.http.HttpMethod.DELETE,
+                                "/tours/*", "/tours/*/itineraries/*", "/tours/*/departures/*", "/tours/*/images/*").hasAnyRole("ADMIN", "STAFF")
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/tour-bookings/my",
                                 "/restaurants/bookings/my").authenticated()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/tour-bookings/all",
                                 "/restaurants/bookings/all", "/bookings/all").hasAnyRole("ADMIN", "STAFF")
-                        .requestMatchers(org.springframework.http.HttpMethod.PATCH, "/tour-bookings/**").authenticated()
+                        .requestMatchers(org.springframework.http.HttpMethod.PATCH, "/tour-bookings/*/cancel").authenticated()
+                        .requestMatchers(org.springframework.http.HttpMethod.PATCH, "/tour-bookings/*/status").hasAnyRole("ADMIN", "STAFF")
                         .requestMatchers(org.springframework.http.HttpMethod.PATCH, "/restaurants/bookings/**").authenticated()
                         .requestMatchers("/bookings/**").authenticated()
                         // Tour reviews: GET public, POST authenticated, admin actions ADMIN

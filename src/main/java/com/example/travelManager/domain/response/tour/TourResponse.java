@@ -1,6 +1,7 @@
 package com.example.travelManager.domain.response.tour;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import com.example.travelManager.util.constant.tour.TourStatus;
 import com.example.travelManager.util.constant.tour.TourType;
@@ -22,4 +23,5 @@ public class TourResponse {
     private TourStatus status;
     private Double averageRating;
     private int totalDepartures;
+    private List<String> images; // base64 strings, index 0 = ảnh chính
 }

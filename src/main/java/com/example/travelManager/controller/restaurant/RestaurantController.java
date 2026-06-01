@@ -58,32 +58,32 @@ public class RestaurantController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<RestaurantResponse> getById(@PathVariable Long id) {
+    public ResponseEntity<RestaurantResponse> getById(@PathVariable("id") Long id) {
         return ResponseEntity.ok(toResponse(restaurantService.getById(id)));
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<RestaurantResponse> update(
-            @PathVariable Long id,
+            @PathVariable("id") Long id,
             @Valid @RequestBody RestaurantRequest request) {
         String user = SecurityUtil.getCurrentUserLogin().orElse("system");
         return ResponseEntity.ok(toResponse(restaurantService.updateRestaurant(id, request, user)));
     }
 
     @PatchMapping("/{id}/active")
-    public ResponseEntity<RestaurantResponse> toggleActive(@PathVariable Long id) {
+    public ResponseEntity<RestaurantResponse> toggleActive(@PathVariable("id") Long id) {
         return ResponseEntity.ok(toResponse(restaurantService.toggleActive(id)));
     }
 
     @PatchMapping(value = "/{id}/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<RestaurantResponse> uploadPhoto(
-            @PathVariable Long id,
+            @PathVariable("id") Long id,
             @RequestParam("photo") MultipartFile photo) throws IOException, SQLException {
         return ResponseEntity.ok(toResponse(restaurantService.uploadPhoto(id, photo)));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public ResponseEntity<Void> delete(@PathVariable("id") Long id) {
         restaurantService.deleteRestaurant(id);
         return ResponseEntity.noContent().build();
     }
@@ -92,7 +92,7 @@ public class RestaurantController {
 
     @PostMapping("/{restaurantId}/bookings")
     public ResponseEntity<RestaurantBookingResponse> book(
-            @PathVariable Long restaurantId,
+            @PathVariable("restaurantId") Long restaurantId,
             @Valid @RequestBody RestaurantBookingRequest request) {
         String email = SecurityUtil.getCurrentUserLogin()
                 .orElseThrow(() -> new RuntimeException("Not authenticated"));
@@ -147,7 +147,7 @@ public class RestaurantController {
 
     @PatchMapping("/bookings/{bookingId}/status")
     public ResponseEntity<RestaurantBookingResponse> updateStatus(
-            @PathVariable Long bookingId,
+            @PathVariable("bookingId") Long bookingId,
             @RequestParam("status") RestaurantBookingStatus status) {
         RestaurantBooking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
@@ -156,7 +156,7 @@ public class RestaurantController {
     }
 
     @PatchMapping("/bookings/{bookingId}/cancel")
-    public ResponseEntity<RestaurantBookingResponse> cancel(@PathVariable Long bookingId) {
+    public ResponseEntity<RestaurantBookingResponse> cancel(@PathVariable("bookingId") Long bookingId) {
         RestaurantBooking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
         booking.setStatus(RestaurantBookingStatus.CANCELLED);
@@ -207,3 +207,4 @@ public class RestaurantController {
         return res;
     }
 }
+

@@ -28,7 +28,7 @@ public class TourSeasonalPriceController {
     private final TourRepository tourRepository;
 
     @GetMapping
-    public ResponseEntity<List<SeasonalPriceResponse>> getByTour(@PathVariable Long tourId) {
+    public ResponseEntity<List<SeasonalPriceResponse>> getByTour(@PathVariable("tourId") Long tourId) {
         return ResponseEntity.ok(
                 seasonalPriceRepository.findByTourId(tourId)
                         .stream().map(this::toResponse).toList());
@@ -36,7 +36,7 @@ public class TourSeasonalPriceController {
 
     @PostMapping
     public ResponseEntity<SeasonalPriceResponse> create(
-            @PathVariable Long tourId,
+            @PathVariable("tourId") Long tourId,
             @Valid @RequestBody SeasonalPriceRequest request) {
         Tour tour = tourRepository.findById(tourId)
                 .orElseThrow(() -> new ResourceNotFoundException("Tour not found: " + tourId));
@@ -56,8 +56,8 @@ public class TourSeasonalPriceController {
 
     @PutMapping("/{priceId}")
     public ResponseEntity<SeasonalPriceResponse> update(
-            @PathVariable Long tourId,
-            @PathVariable Long priceId,
+            @PathVariable("tourId") Long tourId,
+            @PathVariable("priceId") Long priceId,
             @Valid @RequestBody SeasonalPriceRequest request) {
         TourSeasonalPrice price = findInTour(tourId, priceId);
         price.setSeasonName(request.getSeasonName());
@@ -71,8 +71,8 @@ public class TourSeasonalPriceController {
 
     @DeleteMapping("/{priceId}")
     public ResponseEntity<Void> delete(
-            @PathVariable Long tourId,
-            @PathVariable Long priceId) {
+            @PathVariable("tourId") Long tourId,
+            @PathVariable("priceId") Long priceId) {
         seasonalPriceRepository.delete(findInTour(tourId, priceId));
         return ResponseEntity.noContent().build();
     }
@@ -127,3 +127,4 @@ public class TourSeasonalPriceController {
         private BigDecimal priceChild;
     }
 }
+

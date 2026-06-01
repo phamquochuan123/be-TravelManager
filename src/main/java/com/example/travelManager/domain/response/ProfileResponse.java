@@ -1,5 +1,7 @@
 package com.example.travelManager.domain.response;
 
+import java.time.LocalDate;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -19,6 +21,8 @@ public class ProfileResponse {
     private Boolean isAccountVerified;
     private String roleName;
     private String phone;
+    private LocalDate birthDate;
+    private String gender;
     private String avatar;
     private Boolean isActive;
     private String lockReason;

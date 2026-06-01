@@ -51,6 +51,7 @@ public class TourController {
     private final TourDepartureRepository departureRepository;
     private final TourItineraryRepository itineraryRepository;
     private final UserRepository userRepository;
+    private final com.example.travelManager.repository.tour.TourImageRepository imageRepository;
 
     // ── Tour CRUD ────────────────────────────────────────────────
 
@@ -63,28 +64,40 @@ public class TourController {
 
     @GetMapping
     public ResponseEntity<List<TourResponse>> getAllTours(
-            @RequestParam(value = "admin", defaultValue = "false") boolean admin) {
+            @RequestParam(value = "admin", defaultValue = "false") boolean admin,
+            @RequestParam(value = "destination", required = false) String destination) {
         List<Tour> tours = admin ? tourService.getAllToursAdmin() : tourService.getAllActiveTours();
-        return ResponseEntity.ok(tours.stream().map(this::toResponse).toList());
+        if (destination != null && !destination.isBlank()) {
+            tours = tours.stream()
+                    .filter(t -> destination.equalsIgnoreCase(t.getDestination()))
+                    .toList();
+        }
+        return ResponseEntity.ok(tours.stream().map(this::toListResponse).toList());
     }
 
     @GetMapping("/{tourId}")
-    public ResponseEntity<TourDetailResponse> getTourById(@PathVariable Long tourId) {
+    public ResponseEntity<TourDetailResponse> getTourById(@PathVariable("tourId") Long tourId) {
         Tour tour = tourService.getTourById(tourId);
         return ResponseEntity.ok(toDetailResponse(tour));
     }
 
     @PutMapping("/{tourId}")
     public ResponseEntity<TourResponse> updateTour(
-            @PathVariable Long tourId,
+            @PathVariable("tourId") Long tourId,
             @Valid @RequestBody TourRequest request) {
         String currentUser = SecurityUtil.getCurrentUserLogin().orElse("system");
         Tour tour = tourService.updateTour(tourId, request, currentUser);
         return ResponseEntity.ok(toResponse(tour));
     }
 
+    @PatchMapping("/{tourId}/active")
+    public ResponseEntity<TourResponse> toggleActive(@PathVariable("tourId") Long tourId) {
+        Tour tour = tourService.toggleActive(tourId);
+        return ResponseEntity.ok(toResponse(tour));
+    }
+
     @DeleteMapping("/{tourId}")
-    public ResponseEntity<Void> deleteTour(@PathVariable Long tourId) {
+    public ResponseEntity<Void> deleteTour(@PathVariable("tourId") Long tourId) {
         tourService.deleteTour(tourId);
         return ResponseEntity.noContent().build();
     }
@@ -93,7 +106,7 @@ public class TourController {
 
     @PostMapping("/{tourId}/itineraries")
     public ResponseEntity<TourItineraryResponse> addItinerary(
-            @PathVariable Long tourId,
+            @PathVariable("tourId") Long tourId,
             @Valid @RequestBody TourItineraryRequest request) {
         TourItinerary itinerary = tourService.addItinerary(tourId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(toItineraryResponse(itinerary));
@@ -101,8 +114,8 @@ public class TourController {
 
     @PutMapping("/{tourId}/itineraries/{itineraryId}")
     public ResponseEntity<TourItineraryResponse> updateItinerary(
-            @PathVariable Long tourId,
-            @PathVariable Long itineraryId,
+            @PathVariable("tourId") Long tourId,
+            @PathVariable("itineraryId") Long itineraryId,
             @Valid @RequestBody TourItineraryRequest request) {
         TourItinerary existing = itineraryRepository.findById(itineraryId)
                 .orElseThrow(() -> new ResourceNotFoundException("Itinerary not found: " + itineraryId));
@@ -115,7 +128,13 @@ public class TourController {
 
     @DeleteMapping("/{tourId}/itineraries/{itineraryId}")
     public ResponseEntity<Void> deleteItinerary(
-            @PathVariable Long itineraryId) {
+            @PathVariable("tourId") Long tourId,
+            @PathVariable("itineraryId") Long itineraryId) {
+        TourItinerary existing = itineraryRepository.findById(itineraryId)
+                .orElseThrow(() -> new ResourceNotFoundException("Itinerary not found: " + itineraryId));
+        if (!existing.getTour().getId().equals(tourId)) {
+            throw new IllegalArgumentException("Itinerary " + itineraryId + " không thuộc tour " + tourId);
+        }
         tourService.deleteItinerary(itineraryId);
         return ResponseEntity.noContent().build();
     }
@@ -124,7 +143,7 @@ public class TourController {
 
     @PostMapping("/{tourId}/departures")
     public ResponseEntity<TourDepartureResponse> addDeparture(
-            @PathVariable Long tourId,
+            @PathVariable("tourId") Long tourId,
             @Valid @RequestBody TourDepartureRequest request) {
         TourDeparture departure = tourService.addDeparture(tourId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(toDepartureResponse(departure));
@@ -132,15 +151,21 @@ public class TourController {
 
     @DeleteMapping("/{tourId}/departures/{departureId}")
     public ResponseEntity<Void> deleteDeparture(
-            @PathVariable Long departureId) {
+            @PathVariable("tourId") Long tourId,
+            @PathVariable("departureId") Long departureId) {
+        TourDeparture existing = departureRepository.findById(departureId)
+                .orElseThrow(() -> new ResourceNotFoundException("Departure not found: " + departureId));
+        if (!existing.getTour().getId().equals(tourId)) {
+            throw new IllegalArgumentException("Departure " + departureId + " không thuộc tour " + tourId);
+        }
         tourService.deleteDeparture(departureId);
         return ResponseEntity.noContent().build();
     }
 
     @PatchMapping("/{tourId}/departures/{departureId}/assign-staff")
     public ResponseEntity<TourDepartureResponse> assignStaff(
-            @PathVariable Long tourId,
-            @PathVariable Long departureId,
+            @PathVariable("tourId") Long tourId,
+            @PathVariable("departureId") Long departureId,
             @RequestBody java.util.Map<String, Long> body) {
         TourDeparture departure = departureRepository.findById(departureId)
                 .orElseThrow(() -> new ResourceNotFoundException("Departure not found: " + departureId));
@@ -162,7 +187,7 @@ public class TourController {
 
     @PostMapping(value = "/{tourId}/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Void> addImage(
-            @PathVariable Long tourId,
+            @PathVariable("tourId") Long tourId,
             @RequestParam("file") MultipartFile file) throws Exception {
         tourService.addImage(tourId, file);
         return ResponseEntity.status(HttpStatus.CREATED).build();
@@ -170,7 +195,13 @@ public class TourController {
 
     @DeleteMapping("/{tourId}/images/{imageId}")
     public ResponseEntity<Void> deleteImage(
-            @PathVariable Long imageId) {
+            @PathVariable("tourId") Long tourId,
+            @PathVariable("imageId") Long imageId) {
+        TourImage existing = imageRepository.findById(imageId)
+                .orElseThrow(() -> new ResourceNotFoundException("Image not found: " + imageId));
+        if (!existing.getTour().getId().equals(tourId)) {
+            throw new IllegalArgumentException("Image " + imageId + " không thuộc tour " + tourId);
+        }
         tourService.deleteImage(imageId);
         return ResponseEntity.noContent().build();
     }
@@ -191,7 +222,44 @@ public class TourController {
         res.setStatus(tour.getStatus());
         res.setAverageRating(reviewRepository.findAverageRatingByTourId(tour.getId()));
         res.setTotalDepartures(tour.getDepartures().size());
+        List<TourImage> imgs = imageRepository.findByTourIdOrderBySortOrderAsc(tour.getId());
+        if (!imgs.isEmpty()) {
+            String b64 = blobToBase64(imgs.get(0).getImageData());
+            if (b64 != null) res.setImages(java.util.List.of(b64));
+        }
         return res;
+    }
+
+    private TourResponse toListResponse(Tour tour) {
+        TourResponse res = new TourResponse();
+        res.setId(tour.getId());
+        res.setName(tour.getName());
+        res.setDestination(tour.getDestination());
+        res.setDeparture(tour.getDeparture());
+        res.setTourType(tour.getTourType());
+        res.setPriceAdult(tour.getPriceAdult());
+        res.setPriceChild(tour.getPriceChild());
+        res.setDurationDays(tour.getDurationDays());
+        res.setMaxSlots(tour.getMaxSlots());
+        res.setStatus(tour.getStatus());
+        res.setTotalDepartures(tour.getDepartures().size());
+        res.setAverageRating(reviewRepository.findAverageRatingByTourId(tour.getId()));
+        List<TourImage> imgs = imageRepository.findByTourIdOrderBySortOrderAsc(tour.getId());
+        if (!imgs.isEmpty()) {
+            String b64 = blobToBase64(imgs.get(0).getImageData());
+            if (b64 != null) res.setImages(java.util.List.of(b64));
+        }
+        return res;
+    }
+
+    private String blobToBase64(java.sql.Blob blob) {
+        if (blob == null) return null;
+        try {
+            byte[] bytes = blob.getBytes(1, (int) blob.length());
+            return java.util.Base64.getEncoder().encodeToString(bytes);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private TourDetailResponse toDetailResponse(Tour tour) {
@@ -251,3 +319,4 @@ public class TourController {
         return res;
     }
 }
+

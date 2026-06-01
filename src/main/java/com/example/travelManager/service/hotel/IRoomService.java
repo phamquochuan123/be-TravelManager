@@ -37,5 +37,8 @@ public interface IRoomService {
 
     void deleteRoomFromHotel(Long hotelId, Long roomId);
 
+    Room updateRoomInHotel(Long hotelId, Long roomId, RoomCreateRequest request, MultipartFile photo)
+            throws IOException, SQLException;
+
     long countRoomsByHotelId(Long hotelId);
 }

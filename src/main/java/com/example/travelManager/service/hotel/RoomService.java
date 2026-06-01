@@ -130,6 +130,27 @@ public class RoomService implements IRoomService {
     }
 
     @Override
+    public Room updateRoomInHotel(Long hotelId, Long roomId, RoomCreateRequest request, MultipartFile photo)
+            throws IOException, SQLException {
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ResourceNotFoundException("Room not found: " + roomId));
+        if (room.getHotel() == null || !room.getHotel().getId().equals(hotelId)) {
+            throw new IllegalArgumentException("Room does not belong to hotel " + hotelId);
+        }
+        if (request.getRoomType() != null) room.setRoomType(request.getRoomType());
+        if (request.getRoomPrice() != null) room.setRoomPrice(request.getRoomPrice());
+        if (request.getRoomNumber() != null) room.setRoomNumber(request.getRoomNumber());
+        if (request.getMaxGuests() > 0) room.setMaxGuests(request.getMaxGuests());
+        if (request.getNumBeds() > 0) room.setNumBeds(request.getNumBeds());
+        if (request.getArea() != null) room.setArea(request.getArea());
+        if (request.getDescription() != null) room.setDescription(request.getDescription());
+        if (photo != null && !photo.isEmpty()) {
+            room.setPhoto(new SerialBlob(photo.getBytes()));
+        }
+        return roomRepository.save(room);
+    }
+
+    @Override
     public long countRoomsByHotelId(Long hotelId) {
         return roomRepository.countByHotel_Id(hotelId);
     }

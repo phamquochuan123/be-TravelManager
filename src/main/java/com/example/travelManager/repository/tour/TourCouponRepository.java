@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -12,6 +13,10 @@ import com.example.travelManager.domain.tour.TourCoupon;
 public interface TourCouponRepository extends JpaRepository<TourCoupon, Long> {
 
     Optional<TourCoupon> findByCode(String code);
+
+    @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT c FROM TourCoupon c WHERE c.code = :code")
+    Optional<TourCoupon> findByCodeForUpdate(@Param("code") String code);
 
     @Query("SELECT c FROM TourCoupon c WHERE c.code = :code AND c.active = true " +
            "AND c.startDate <= :today AND c.endDate >= :today " +

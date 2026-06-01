@@ -2,6 +2,7 @@ package com.example.travelManager.service.hotel;
 
 import com.example.travelManager.domain.hotel.BookedRoom;
 import com.example.travelManager.domain.hotel.Room;
+import com.example.travelManager.util.constant.hotel.HotelBookingStatus;
 import com.example.travelManager.util.constant.hotel.RoomStatus;
 import com.example.travelManager.domain.request.hotel.BookingRequest;
 import com.example.travelManager.exception.ResourceNotFoundException;
@@ -44,10 +45,11 @@ public class BookedRoomServiceImpl implements IBookedRoomService {
         }
 
         List<BookedRoom> conflicts = bookedRoomRepository
-                .findByRoom_IdAndCheckOutDateAfterAndCheckInDateBefore(
-                        roomId, request.getCheckInDate(), request.getCheckOutDate());
+                .findByRoom_IdAndStatusNotAndCheckOutDateAfterAndCheckInDateBefore(
+                        roomId, HotelBookingStatus.CANCELLED,
+                        request.getCheckInDate(), request.getCheckOutDate());
         if (!conflicts.isEmpty()) {
-            throw new IllegalStateException("Room is already booked for the selected dates");
+            throw new IllegalStateException("Phòng đã được đặt cho khoảng thời gian này. Vui lòng chọn ngày khác.");
         }
 
         BookedRoom booking = new BookedRoom();

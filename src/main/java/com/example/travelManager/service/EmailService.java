@@ -1,5 +1,6 @@
 package com.example.travelManager.service;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
@@ -8,6 +9,9 @@ import org.springframework.stereotype.Service;
 public class EmailService {
 
     private final JavaMailSender mailSender;
+
+    @Value("${app.admin.email:admin@travelmanager.com}")
+    private String adminEmail;
 
     public EmailService(JavaMailSender mailSender) {
         this.mailSender = mailSender;
@@ -83,6 +87,23 @@ public class EmailService {
                 "Mã booking  : " + bookingId + "\n\n" +
                 "Chúng tôi sẽ liên hệ để xác nhận trong thời gian sớm nhất.\n" +
                 "Travel Manager Team");
+        mailSender.send(message);
+    }
+
+    public void sendIncidentReportNotification(String staffName, String tourName,
+            String departureDate, String incidentType, String description) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setFrom("phamquochuan9876@gmail.com");
+        message.setTo(adminEmail);
+        message.setSubject("[CẢNH BÁO] Sự cố Tour: " + tourName);
+        message.setText(
+                "Staff " + staffName + " đã báo cáo sự cố!\n\n" +
+                "Tour        : " + tourName + "\n" +
+                "Ngày khởi hành: " + departureDate + "\n" +
+                "Loại sự cố  : " + incidentType + "\n\n" +
+                "Mô tả:\n" + description + "\n\n" +
+                "Vui lòng đăng nhập hệ thống để xử lý.\n" +
+                "Travel Manager System");
         mailSender.send(message);
     }
 

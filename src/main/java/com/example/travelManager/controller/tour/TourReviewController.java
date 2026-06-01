@@ -32,7 +32,7 @@ public class TourReviewController {
     private final ITourService tourService;
 
     @GetMapping
-    public ResponseEntity<List<TourReviewResponse>> getReviews(@PathVariable Long tourId) {
+    public ResponseEntity<List<TourReviewResponse>> getReviews(@PathVariable("tourId") Long tourId) {
         return ResponseEntity.ok(
                 reviewRepository.findByTourId(tourId)
                         .stream().map(this::toResponse).toList());
@@ -40,7 +40,7 @@ public class TourReviewController {
 
     @PostMapping
     public ResponseEntity<TourReviewResponse> createReview(
-            @PathVariable Long tourId,
+            @PathVariable("tourId") Long tourId,
             @Valid @RequestBody TourReviewRequest request) {
 
         String email = SecurityUtil.getCurrentUserLogin()
@@ -79,8 +79,8 @@ public class TourReviewController {
 
     @DeleteMapping("/{reviewId}")
     public ResponseEntity<Void> deleteReview(
-            @PathVariable Long tourId,
-            @PathVariable Long reviewId) {
+            @PathVariable("tourId") Long tourId,
+            @PathVariable("reviewId") Long reviewId) {
         TourReview review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("Review not found: " + reviewId));
         if (!review.getTour().getId().equals(tourId)) {
@@ -92,8 +92,8 @@ public class TourReviewController {
 
     @PatchMapping("/{reviewId}/reply")
     public ResponseEntity<TourReviewResponse> replyReview(
-            @PathVariable Long tourId,
-            @PathVariable Long reviewId,
+            @PathVariable("tourId") Long tourId,
+            @PathVariable("reviewId") Long reviewId,
             @RequestBody java.util.Map<String, String> body) {
         TourReview review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("Review not found: " + reviewId));
@@ -106,8 +106,8 @@ public class TourReviewController {
 
     @PatchMapping("/{reviewId}/hide")
     public ResponseEntity<TourReviewResponse> hideReview(
-            @PathVariable Long tourId,
-            @PathVariable Long reviewId) {
+            @PathVariable("tourId") Long tourId,
+            @PathVariable("reviewId") Long reviewId) {
         TourReview review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("Review not found: " + reviewId));
         if (!review.getTour().getId().equals(tourId)) {
@@ -119,8 +119,8 @@ public class TourReviewController {
 
     @PatchMapping("/{reviewId}/unhide")
     public ResponseEntity<TourReviewResponse> unhideReview(
-            @PathVariable Long tourId,
-            @PathVariable Long reviewId) {
+            @PathVariable("tourId") Long tourId,
+            @PathVariable("reviewId") Long reviewId) {
         TourReview review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("Review not found: " + reviewId));
         if (!review.getTour().getId().equals(tourId)) {
@@ -144,3 +144,4 @@ public class TourReviewController {
         return res;
     }
 }
+

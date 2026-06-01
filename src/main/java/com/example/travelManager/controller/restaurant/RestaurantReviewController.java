@@ -36,7 +36,7 @@ public class RestaurantReviewController {
     private final UserRepository userRepository;
 
     @GetMapping
-    public ResponseEntity<List<ReviewResponse>> getReviews(@PathVariable Long restaurantId) {
+    public ResponseEntity<List<ReviewResponse>> getReviews(@PathVariable("restaurantId") Long restaurantId) {
         List<ReviewResponse> reviews = reviewRepository.findByRestaurantId(restaurantId)
                 .stream()
                 .filter(r -> !r.isHidden())
@@ -46,14 +46,14 @@ public class RestaurantReviewController {
     }
 
     @GetMapping("/all")
-    public ResponseEntity<List<ReviewResponse>> getAllReviews(@PathVariable Long restaurantId) {
+    public ResponseEntity<List<ReviewResponse>> getAllReviews(@PathVariable("restaurantId") Long restaurantId) {
         return ResponseEntity.ok(
                 reviewRepository.findByRestaurantId(restaurantId).stream().map(this::toResponse).toList());
     }
 
     @PostMapping
     public ResponseEntity<ReviewResponse> createReview(
-            @PathVariable Long restaurantId,
+            @PathVariable("restaurantId") Long restaurantId,
             @Valid @RequestBody ReviewRequest request) {
 
         String email = SecurityUtil.getCurrentUserLogin()
@@ -93,8 +93,8 @@ public class RestaurantReviewController {
 
     @PatchMapping("/{reviewId}/reply")
     public ResponseEntity<ReviewResponse> replyReview(
-            @PathVariable Long restaurantId,
-            @PathVariable Long reviewId,
+            @PathVariable("restaurantId") Long restaurantId,
+            @PathVariable("reviewId") Long reviewId,
             @RequestBody Map<String, String> body) {
         RestaurantReview review = findReviewInRestaurant(restaurantId, reviewId);
         review.setAdminReply(body.get("reply"));
@@ -103,8 +103,8 @@ public class RestaurantReviewController {
 
     @PatchMapping("/{reviewId}/hide")
     public ResponseEntity<ReviewResponse> hideReview(
-            @PathVariable Long restaurantId,
-            @PathVariable Long reviewId) {
+            @PathVariable("restaurantId") Long restaurantId,
+            @PathVariable("reviewId") Long reviewId) {
         RestaurantReview review = findReviewInRestaurant(restaurantId, reviewId);
         review.setHidden(true);
         return ResponseEntity.ok(toResponse(reviewRepository.save(review)));
@@ -112,8 +112,8 @@ public class RestaurantReviewController {
 
     @PatchMapping("/{reviewId}/unhide")
     public ResponseEntity<ReviewResponse> unhideReview(
-            @PathVariable Long restaurantId,
-            @PathVariable Long reviewId) {
+            @PathVariable("restaurantId") Long restaurantId,
+            @PathVariable("reviewId") Long reviewId) {
         RestaurantReview review = findReviewInRestaurant(restaurantId, reviewId);
         review.setHidden(false);
         return ResponseEntity.ok(toResponse(reviewRepository.save(review)));
@@ -121,8 +121,8 @@ public class RestaurantReviewController {
 
     @DeleteMapping("/{reviewId}")
     public ResponseEntity<Void> deleteReview(
-            @PathVariable Long restaurantId,
-            @PathVariable Long reviewId) {
+            @PathVariable("restaurantId") Long restaurantId,
+            @PathVariable("reviewId") Long reviewId) {
         reviewRepository.delete(findReviewInRestaurant(restaurantId, reviewId));
         return ResponseEntity.noContent().build();
     }
@@ -172,3 +172,4 @@ public class RestaurantReviewController {
         private Instant createdAt;
     }
 }
+

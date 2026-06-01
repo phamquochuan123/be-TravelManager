@@ -17,6 +17,7 @@ import com.example.travelManager.service.tour.ITourService;
 import com.example.travelManager.util.SecurityUtil;
 import com.example.travelManager.util.constant.tour.BookingStatus;
 import jakarta.transaction.Transactional;
+import org.springframework.security.access.AccessDeniedException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -41,7 +42,7 @@ public class TourBookingController {
     @Transactional
     @PostMapping("/tours/{tourId}")
     public ResponseEntity<TourBookingResponse> book(
-            @PathVariable Long tourId,
+            @PathVariable("tourId") Long tourId,
             @Valid @RequestBody TourBookingRequest request) {
 
         String email = SecurityUtil.getCurrentUserLogin()
@@ -53,10 +54,6 @@ public class TourBookingController {
         TourDeparture departure = departureRepository.findById(request.getDepartureId())
                 .orElseThrow(() -> new ResourceNotFoundException("Departure not found"));
 
-        if (departure.getAvailableSlots() < request.getNumAdults() + request.getNumChildren()) {
-            throw new IllegalStateException("Không đủ chỗ trống cho ngày khởi hành này");
-        }
-
         BigDecimal priceAdult = tour.getPriceAdult();
         BigDecimal priceChild = tour.getPriceChild() != null ? tour.getPriceChild() : priceAdult;
         BigDecimal original = priceAdult.multiply(BigDecimal.valueOf(request.getNumAdults()))
@@ -65,14 +62,15 @@ public class TourBookingController {
         BigDecimal discount = BigDecimal.ZERO;
         TourCoupon coupon = null;
         if (request.getCouponCode() != null && !request.getCouponCode().isBlank()) {
-            coupon = couponRepository.findByCode(request.getCouponCode()).orElse(null);
+            coupon = couponRepository.findByCodeForUpdate(request.getCouponCode()).orElse(null);
             if (coupon != null && coupon.isActive()
                     && coupon.getUsedCount() < coupon.getUsageLimit()
                     && !java.time.LocalDate.now().isAfter(coupon.getEndDate())
                     && !java.time.LocalDate.now().isBefore(coupon.getStartDate())
                     && (coupon.getMinOrderValue() == null || original.compareTo(coupon.getMinOrderValue()) >= 0)) {
                 if (coupon.getCouponType() == com.example.travelManager.util.constant.tour.CouponType.PERCENT) {
-                    discount = original.multiply(coupon.getDiscountValue()).divide(BigDecimal.valueOf(100));
+                    discount = original.multiply(coupon.getDiscountValue())
+                                       .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
                 } else {
                     discount = coupon.getDiscountValue();
                 }
@@ -96,15 +94,16 @@ public class TourBookingController {
         booking.setNumChildren(request.getNumChildren());
         booking.setOriginalPrice(original);
         booking.setDiscountAmount(discount);
-        booking.setFinalPrice(original.subtract(discount));
+        BigDecimal finalPrice = original.subtract(discount);
+        if (finalPrice.compareTo(BigDecimal.ZERO) < 0) finalPrice = BigDecimal.ZERO;
+        booking.setFinalPrice(finalPrice);
         booking.setNote(request.getNote());
 
-        // Save booking trước, sau đó mới giảm slot
-        // → nếu save booking fail, slot không bị mất
+        int needed = request.getNumAdults() + request.getNumChildren();
+        if (departureRepository.decrementSlot(departure.getId(), needed) == 0) {
+            throw new IllegalStateException("Hết chỗ trống");
+        }
         TourBooking saved = bookingRepository.save(booking);
-
-        departure.setAvailableSlots(departure.getAvailableSlots() - request.getNumAdults() - request.getNumChildren());
-        departureRepository.save(departure);
 
         try {
             emailService.sendTourBookingConfirmation(
@@ -139,7 +138,7 @@ public class TourBookingController {
 
     @PatchMapping("/{bookingId}/status")
     public ResponseEntity<TourBookingResponse> updateStatus(
-            @PathVariable Long bookingId,
+            @PathVariable("bookingId") Long bookingId,
             @RequestParam("status") BookingStatus status) {
         TourBooking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
@@ -147,17 +146,30 @@ public class TourBookingController {
         return ResponseEntity.ok(toResponse(bookingRepository.save(booking)));
     }
 
+    @Transactional
     @PatchMapping("/{bookingId}/cancel")
-    public ResponseEntity<TourBookingResponse> cancel(@PathVariable Long bookingId) {
+    public ResponseEntity<TourBookingResponse> cancel(@PathVariable("bookingId") Long bookingId) {
         TourBooking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
+
+        String currentEmail = com.example.travelManager.util.SecurityUtil
+                .getCurrentUserLogin().orElseThrow();
+        UserEntity currentUser = userRepository.findByEmail(currentEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        boolean isPrivileged = currentUser.getRole() != null &&
+                ("ADMIN".equals(currentUser.getRole().getName()) ||
+                 "STAFF".equals(currentUser.getRole().getName()));
+        if (!isPrivileged && !booking.getUser().getEmail().equals(currentEmail)) {
+            throw new AccessDeniedException("Không có quyền hủy booking này");
+        }
+
         if (booking.getStatus() == BookingStatus.CANCELLED) {
             throw new IllegalStateException("Booking đã được hủy trước đó");
         }
-        // Hoàn lại slot
-        TourDeparture dep = booking.getDeparture();
-        dep.setAvailableSlots(dep.getAvailableSlots() + booking.getNumAdults() + booking.getNumChildren());
-        departureRepository.save(dep);
+
+        departureRepository.incrementSlot(
+                booking.getDeparture().getId(),
+                booking.getNumAdults() + booking.getNumChildren());
 
         booking.setStatus(BookingStatus.CANCELLED);
         return ResponseEntity.ok(toResponse(bookingRepository.save(booking)));
@@ -185,3 +197,4 @@ public class TourBookingController {
         return res;
     }
 }
+

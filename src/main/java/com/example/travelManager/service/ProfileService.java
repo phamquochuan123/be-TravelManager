@@ -1,5 +1,7 @@
 package com.example.travelManager.service;
 
+import java.time.LocalDate;
+
 import com.example.travelManager.domain.request.ProfileRequest;
 import com.example.travelManager.domain.response.ProfileResponse;
 
@@ -19,7 +21,7 @@ public interface ProfileService {
 
     void verifyOtp(String email, String otp);
 
-    ProfileResponse updateProfile(String email, String name, String phone);
+    ProfileResponse updateProfile(String email, String name, String phone, LocalDate birthDate, String gender);
 
     void changePassword(String email, String currentPassword, String newPassword);
 

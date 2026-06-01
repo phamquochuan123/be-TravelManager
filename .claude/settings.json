@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.\\\\gradlew.bat bootRun --args=\"--spring.profiles.active=default\")",
+      "Bash(dir /s /b \"D:\\\\springjava\\\\travel\\\\react travel manager\\\\src\")",
+      "Bash(Get-ChildItem \"D:\\\\springjava\\\\travel\\\\react travel manager\\\\src\" -Filter \"*.tsx\")"
+    ]
+  }
+}

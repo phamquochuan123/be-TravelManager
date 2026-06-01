@@ -95,11 +95,8 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authenticationToken);
                 }
 
-            } catch (io.jsonwebtoken.ExpiredJwtException e) {
-                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                response.setContentType("application/json");
-                response.getWriter().write("{\"error\":\"JWT expired\"}");
-                return;
+            } catch (io.jsonwebtoken.JwtException e) {
+                // Covers: Expired, Malformed, Signature, Unsupported
             }
         }
 

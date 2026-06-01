@@ -43,32 +43,32 @@ public class DestinationController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<DestinationResponse> getById(@PathVariable Long id) {
+    public ResponseEntity<DestinationResponse> getById(@PathVariable("id") Long id) {
         return ResponseEntity.ok(toResponse(destinationService.getById(id)));
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<DestinationResponse> update(
-            @PathVariable Long id,
+            @PathVariable("id") Long id,
             @Valid @RequestBody DestinationRequest request) {
         String user = SecurityUtil.getCurrentUserLogin().orElse("system");
         return ResponseEntity.ok(toResponse(destinationService.update(id, request, user)));
     }
 
     @PatchMapping("/{id}/active")
-    public ResponseEntity<DestinationResponse> toggleActive(@PathVariable Long id) {
+    public ResponseEntity<DestinationResponse> toggleActive(@PathVariable("id") Long id) {
         return ResponseEntity.ok(toResponse(destinationService.toggleActive(id)));
     }
 
     @PatchMapping(value = "/{id}/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<DestinationResponse> uploadPhoto(
-            @PathVariable Long id,
+            @PathVariable("id") Long id,
             @RequestParam("photo") MultipartFile photo) throws IOException, SQLException {
         return ResponseEntity.ok(toResponse(destinationService.uploadPhoto(id, photo)));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public ResponseEntity<Void> delete(@PathVariable("id") Long id) {
         destinationService.delete(id);
         return ResponseEntity.noContent().build();
     }
@@ -91,3 +91,4 @@ public class DestinationController {
         return res;
     }
 }
+

@@ -2,8 +2,11 @@ package com.example.travelManager.domain.hotel;
 
 import java.time.LocalDate;
 
+import com.example.travelManager.util.constant.hotel.HotelBookingStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -49,6 +52,10 @@ public class BookedRoom {
 
     @Column(name = "booking_confirmation_code")
     private String bookingConfirmationCode;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status")
+    private HotelBookingStatus status = HotelBookingStatus.PENDING;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "room_id")

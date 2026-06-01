@@ -84,6 +84,17 @@ public class TourService implements ITourService {
         return tourRepository.findAllByDeletedFalse();
     }
 
+    @Override
+    public Tour toggleActive(Long tourId) {
+        Tour tour = getTourById(tourId);
+        if (tour.getStatus() == TourStatus.ACTIVE) {
+            tour.setStatus(TourStatus.INACTIVE);
+        } else if (tour.getStatus() == TourStatus.INACTIVE) {
+            tour.setStatus(TourStatus.ACTIVE);
+        }
+        return tourRepository.save(tour);
+    }
+
     // ── Itinerary ────────────────────────────────────────────────
 
     @Override

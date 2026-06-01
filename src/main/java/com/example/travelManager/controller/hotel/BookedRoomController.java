@@ -25,13 +25,13 @@ public class BookedRoomController {
     private final EmailService emailService;
 
     @PostMapping("/hotels/{hotelId}/rooms/{roomId}/bookings")
-    public ResponseEntity<String> bookRoom(
+    public ResponseEntity<BookingResponse> bookRoom(
             @PathVariable("hotelId") Long hotelId,
             @PathVariable("roomId") Long roomId,
             @Valid @RequestBody BookingRequest request) {
         String confirmationCode = bookedRoomService.bookRoom(hotelId, roomId, request);
+        BookedRoom booking = bookedRoomService.findByConfirmationCode(confirmationCode);
         try {
-            BookedRoom booking = bookedRoomService.findByConfirmationCode(confirmationCode);
             Hotel hotel = booking.getRoom() != null ? booking.getRoom().getHotel() : null;
             emailService.sendHotelBookingConfirmation(
                     request.getGuestEmail(),
@@ -42,7 +42,12 @@ public class BookedRoomController {
                     request.getCheckOutDate().toString(),
                     confirmationCode);
         } catch (Exception ignored) {}
-        return ResponseEntity.ok(confirmationCode);
+        BookingResponse res = new BookingResponse();
+        res.setId(booking.getBookingId());
+        res.setBookingConfirmationCode(confirmationCode);
+        res.setCheckInDate(booking.getCheckInDate());
+        res.setCheckOutDate(booking.getCheckOutDate());
+        return ResponseEntity.ok(res);
     }
 
     @GetMapping("/hotels/{hotelId}/bookings")

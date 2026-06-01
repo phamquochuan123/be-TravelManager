@@ -1,5 +1,6 @@
 package com.example.travelManager.service;
 
+import java.time.LocalDate;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -80,6 +81,8 @@ public class ProfileServiceImpl implements ProfileService {
                 .isAccountVerified(newProfile.getIsAccountVerified())
                 .roleName(newProfile.getRole() != null ? newProfile.getRole().getName() : null)
                 .phone(newProfile.getPhone())
+                .birthDate(newProfile.getBirthDate())
+                .gender(newProfile.getGender())
                 .avatar(avatarBase64)
                 .isActive(newProfile.getIsActive())
                 .lockReason(newProfile.getLockReason())
@@ -92,6 +95,8 @@ public class ProfileServiceImpl implements ProfileService {
                 .email(profileRequest.getEmail())
                 .name(profileRequest.getName())
                 .passWord(passwordEncoder.encode(profileRequest.getPassWord()))
+                .phone(profileRequest.getPhone() != null && !profileRequest.getPhone().isBlank()
+                        ? profileRequest.getPhone() : null)
                 .userId(UUID.randomUUID().toString())
                 .isAccountVerified(false)
                 .resetOtpExpireAt(0L)
@@ -226,11 +231,13 @@ public class ProfileServiceImpl implements ProfileService {
     }
 
     @Override
-    public ProfileResponse updateProfile(String email, String name, String phone) {
+    public ProfileResponse updateProfile(String email, String name, String phone, LocalDate birthDate, String gender) {
         UserEntity user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy user: " + email));
         if (name != null && !name.isBlank()) user.setName(name);
         if (phone != null) user.setPhone(phone);
+        if (birthDate != null) user.setBirthDate(birthDate);
+        if (gender != null) user.setGender(gender);
         return convertToProfileResponse(userRepository.save(user));
     }
 
