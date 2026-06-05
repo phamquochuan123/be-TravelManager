@@ -2,14 +2,9 @@ package com.example.travelManager.controller.hotel;
 
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.sql.Blob;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
-
-import javax.sql.rowset.serial.SerialBlob;
-import javax.sql.rowset.serial.SerialException;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -26,7 +21,6 @@ import com.example.travelManager.domain.hotel.BookedRoom;
 import com.example.travelManager.domain.hotel.Room;
 import com.example.travelManager.domain.response.hotel.BookingResponse;
 import com.example.travelManager.domain.response.hotel.RoomResponse;
-import com.example.travelManager.exception.PhotoRetrievalException;
 import com.example.travelManager.exception.ResourceNotFoundException;
 import com.example.travelManager.service.hotel.BookingService;
 import com.example.travelManager.service.hotel.IRoomService;
@@ -44,7 +38,7 @@ public class RoomController {
     public ResponseEntity<RoomResponse> addNewRoom(
             @RequestParam("photo") MultipartFile photo,
             @RequestParam("roomType") String roomType,
-            @RequestParam("roomPrice") BigDecimal roomPrice) throws SerialException, SQLException, IOException {
+            @RequestParam("roomPrice") BigDecimal roomPrice) throws IOException, SQLException {
 
         Room savedRoom = roomService.addNewRoom(photo, roomType, roomPrice);
         RoomResponse response = new RoomResponse(savedRoom.getId(), savedRoom.getRoomType(),
@@ -82,8 +76,7 @@ public class RoomController {
         byte[] photoBytes = photo != null && !photo.isEmpty() ? photo.getBytes()
                 : roomService.getRoomPhotoByRoomId(roomId);
         Room theRoom = roomService.updateRoom(roomId, roomType, roomPrice, photoBytes);
-        Blob photoBlob = photoBytes != null && photoBytes.length > 0 ? new SerialBlob(photoBytes) : null;
-        theRoom.setPhoto(photoBlob);
+        theRoom.setPhoto(photoBytes);
         return ResponseEntity.ok(getRoomResponse(theRoom));
     }
 
@@ -102,19 +95,11 @@ public class RoomController {
                         booking.getCheckOutDate(),
                         booking.getBookingConfirmationCode()))
                 .toList();
-        byte[] photoBytes = null;
-        if (room.getPhoto() != null) {
-            try {
-                photoBytes = room.getPhoto().getBytes(1, (int) room.getPhoto().length());
-            } catch (SQLException e) {
-                throw new PhotoRetrievalException("Error retrieving photo");
-            }
-        }
         Long hotelId = room.getHotel() != null ? room.getHotel().getId() : null;
         String hotelName = room.getHotel() != null ? room.getHotel().getName() : null;
         return new RoomResponse(room.getId(), room.getRoomNumber(), room.getRoomType(),
                 room.getRoomPrice(), room.getStatus(), room.getMaxGuests(), room.getNumBeds(),
                 room.getArea(), room.getDescription(), room.isBooked(),
-                photoBytes, hotelId, hotelName, bookingInfo);
+                room.getPhoto(), hotelId, hotelName, bookingInfo);
     }
 }

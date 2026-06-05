@@ -30,4 +30,6 @@ public class RestaurantBookingRequest {
 
     @NotBlank
     private String contactEmail;
+
+    private Long tourBookingId;
 }

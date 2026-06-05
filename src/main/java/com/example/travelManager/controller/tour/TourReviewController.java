@@ -20,6 +20,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @RestController
 @RequestMapping("/tours/{tourId}/reviews")
@@ -30,6 +31,7 @@ public class TourReviewController {
     private final TourBookingRepository bookingRepository;
     private final UserRepository userRepository;
     private final ITourService tourService;
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @GetMapping
     public ResponseEntity<List<TourReviewResponse>> getReviews(@PathVariable("tourId") Long tourId) {
@@ -72,6 +74,12 @@ public class TourReviewController {
         review.setBooking(booking);
         review.setRating(request.getRating());
         review.setComment(request.getComment());
+        review.setHidden(true);
+        review.setStatus("PENDING");
+        if (request.getImages() != null && !request.getImages().isEmpty()) {
+            try { review.setImages(MAPPER.writeValueAsString(request.getImages())); }
+            catch (Exception ignored) {}
+        }
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(toResponse(reviewRepository.save(review)));
@@ -138,6 +146,10 @@ public class TourReviewController {
         res.setBookingId(r.getBooking() != null ? r.getBooking().getId() : null);
         res.setRating(r.getRating());
         res.setComment(r.getComment());
+        if (r.getImages() != null) {
+            try { res.setImages(MAPPER.readValue(r.getImages(), new com.fasterxml.jackson.core.type.TypeReference<java.util.List<String>>() {})); }
+            catch (Exception ignored) {}
+        }
         res.setAdminReply(r.getAdminReply());
         res.setHidden(r.isHidden());
         res.setCreatedAt(r.getCreatedAt());

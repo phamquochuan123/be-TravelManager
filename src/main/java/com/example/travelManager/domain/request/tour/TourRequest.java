@@ -36,8 +36,13 @@ public class TourRequest {
     @Min(1)
     private int durationDays;
 
+    @Min(0)
+    private int durationNights;
+
     @Min(1)
     private int maxSlots;
+
+    private Double packageDiscountPercent;
 
     private String cancellationPolicy;
     private String includedServices;

@@ -4,6 +4,8 @@ import com.example.travelManager.domain.tour.Tour;
 import com.example.travelManager.domain.tour.TourImage;
 import com.example.travelManager.domain.tour.TourItinerary;
 import com.example.travelManager.exception.ResourceNotFoundException;
+import com.example.travelManager.repository.hotel.HotelRepository;
+import com.example.travelManager.repository.restaurant.RestaurantRepository;
 import com.example.travelManager.repository.tour.TourBookingRepository;
 import com.example.travelManager.repository.tour.TourDepartureRepository;
 import com.example.travelManager.repository.tour.TourImageRepository;
@@ -39,6 +41,8 @@ public class AdminTourController {
     private final TourItineraryRepository itineraryRepository;
     private final TourDepartureRepository departureRepository;
     private final TourBookingRepository bookingRepository;
+    private final HotelRepository hotelRepository;
+    private final RestaurantRepository restaurantRepository;
 
     @GetMapping("/names")
     public ResponseEntity<List<Map<String, Object>>> names() {
@@ -94,12 +98,11 @@ public class AdminTourController {
             @RequestParam(name = "destination", required = false, defaultValue = "") String destination,
             @RequestParam(name = "durationDays", defaultValue = "1") int durationDays,
             @RequestParam(name = "durationNights", defaultValue = "0") int durationNights,
-            @RequestParam(defaultValue = "0") long priceAdult,
-            @RequestParam(defaultValue = "0") long priceChild,
+            @RequestParam(name = "priceAdult", defaultValue = "0") long priceAdult,
+            @RequestParam(name = "priceChild", defaultValue = "0") long priceChild,
             @RequestParam(name = "description", required = false, defaultValue = "") String description,
             @RequestParam(name = "itinerary", required = false, defaultValue = "[]") String itinerary,
-            @RequestParam(name = "hotels", required = false, defaultValue = "[]") String hotels,
-            @RequestParam(name = "restaurants", required = false, defaultValue = "[]") String restaurants,
+            @RequestParam(name = "destinations", required = false, defaultValue = "[]") String destinations,
             @RequestParam(name = "images", required = false) List<MultipartFile> images) throws Exception {
 
         Tour tour = new Tour();
@@ -110,8 +113,9 @@ public class AdminTourController {
         tour.setPriceAdult(BigDecimal.valueOf(priceAdult));
         tour.setPriceChild(BigDecimal.valueOf(priceChild));
         tour.setDescription(description);
-        tour.setLinkedHotels(hotels);
-        tour.setLinkedRestaurants(restaurants);
+        tour.setLinkedHotels(buildLinkedJson(autoLinkHotels(destination)));
+        tour.setLinkedRestaurants(buildLinkedJson(autoLinkRestaurants(destination)));
+        tour.setLinkedDestinations(destinations);
         tour.setStatus(TourStatus.ACTIVE);
         tour = tourRepository.save(tour);
 
@@ -121,39 +125,53 @@ public class AdminTourController {
         return ResponseEntity.status(HttpStatus.CREATED).body(toItem(tour));
     }
 
-    @PutMapping(value = "/{id}", consumes = "multipart/form-data")
+    @lombok.Data
+    public static class TourUpdateRequest {
+        private String name;
+        private String destination;
+        private int durationDays;
+        private int durationNights;
+        private long priceAdult;
+        private long priceChild;
+        private String description;
+        private String itinerary = "[]";
+        private String destinations = "[]";
+    }
+
+    @PutMapping("/{id}")
     public ResponseEntity<TourItem> update(
             @PathVariable("id") Long id,
-            @RequestParam(name = "name") String name,
-            @RequestParam(name = "destination", required = false, defaultValue = "") String destination,
-            @RequestParam(name = "durationDays", defaultValue = "1") int durationDays,
-            @RequestParam(name = "durationNights", defaultValue = "0") int durationNights,
-            @RequestParam(defaultValue = "0") long priceAdult,
-            @RequestParam(defaultValue = "0") long priceChild,
-            @RequestParam(name = "description", required = false, defaultValue = "") String description,
-            @RequestParam(name = "itinerary", required = false, defaultValue = "[]") String itinerary,
-            @RequestParam(name = "hotels", required = false, defaultValue = "[]") String hotels,
-            @RequestParam(name = "restaurants", required = false, defaultValue = "[]") String restaurants,
+            @org.springframework.web.bind.annotation.RequestBody TourUpdateRequest req) throws Exception {
+
+        Tour tour = tourRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Tour not found: " + id));
+        String destination = req.getDestination() != null ? req.getDestination() : "";
+        tour.setName(req.getName());
+        tour.setDestination(destination);
+        tour.setDurationDays(req.getDurationDays());
+        tour.setDurationNights(req.getDurationNights());
+        tour.setPriceAdult(BigDecimal.valueOf(req.getPriceAdult()));
+        tour.setPriceChild(BigDecimal.valueOf(req.getPriceChild()));
+        tour.setDescription(req.getDescription() != null ? req.getDescription() : "");
+        tour.setLinkedHotels(buildLinkedJson(autoLinkHotels(destination)));
+        tour.setLinkedRestaurants(buildLinkedJson(autoLinkRestaurants(destination)));
+        tour.setLinkedDestinations(req.getDestinations() != null ? req.getDestinations() : "[]");
+        tour = tourRepository.save(tour);
+
+        itineraryRepository.deleteAll(itineraryRepository.findByTourIdOrderByDayNumberAsc(id));
+        saveItineraries(tour, req.getItinerary() != null ? req.getItinerary() : "[]");
+
+        return ResponseEntity.ok(toItem(tour));
+    }
+
+    @PostMapping(value = "/{id}/images/replace", consumes = "multipart/form-data")
+    public ResponseEntity<TourItem> replaceImages(
+            @PathVariable("id") Long id,
             @RequestParam(name = "images", required = false) List<MultipartFile> images) throws Exception {
 
         Tour tour = tourRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Tour not found: " + id));
-        tour.setName(name);
-        tour.setDestination(destination);
-        tour.setDurationDays(durationDays);
-        tour.setDurationNights(durationNights);
-        tour.setPriceAdult(BigDecimal.valueOf(priceAdult));
-        tour.setPriceChild(BigDecimal.valueOf(priceChild));
-        tour.setDescription(description);
-        tour.setLinkedHotels(hotels);
-        tour.setLinkedRestaurants(restaurants);
-        tour = tourRepository.save(tour);
 
-        // Replace itineraries
-        itineraryRepository.deleteAll(itineraryRepository.findByTourIdOrderByDayNumberAsc(id));
-        saveItineraries(tour, itinerary);
-
-        // Replace images only when new ones provided
         if (images != null && images.stream().anyMatch(f -> f != null && !f.isEmpty())) {
             imageRepository.deleteAll(imageRepository.findByTourIdOrderBySortOrderAsc(id));
             saveImages(tour, images);
@@ -207,14 +225,22 @@ public class AdminTourController {
         item.setDepartureCount(departureRepository.findByTourIdOrderByDepartureDateAsc(tour.getId()).size());
         item.setStatus(computeStatus(tour));
 
-        // Images
+        // Images — include id so frontend can delete individually
         List<TourImage> imgs = imageRepository.findByTourIdOrderBySortOrderAsc(tour.getId());
         List<String> imageUrls = new ArrayList<>();
+        List<Map<String, Object>> imageList = new ArrayList<>();
         for (TourImage img : imgs) {
             String url = blobToDataUrl(img.getImageData());
-            if (url != null) imageUrls.add(url);
+            if (url != null) {
+                imageUrls.add(url);
+                Map<String, Object> m = new HashMap<>();
+                m.put("id", img.getId());
+                m.put("url", url);
+                imageList.add(m);
+            }
         }
         item.setImageUrls(imageUrls);
+        item.setImageList(imageList);
         if (!imageUrls.isEmpty()) item.setImageUrl(imageUrls.get(0));
 
         // Itinerary
@@ -229,6 +255,7 @@ public class AdminTourController {
         // Linked hotels/restaurants
         item.setHotels(parseIds(tour.getLinkedHotels()));
         item.setRestaurants(parseIds(tour.getLinkedRestaurants()));
+        item.setDestinations(parseIds(tour.getLinkedDestinations()));
 
         return item;
     }
@@ -271,6 +298,40 @@ public class AdminTourController {
         }
     }
 
+    // ── Auto-link helpers ────────────────────────────────────────
+
+    private String extractPrimaryCity(String destination) {
+        if (destination == null || destination.isBlank()) return "";
+        return destination.split("[–\\-/,]")[0].trim().toLowerCase();
+    }
+
+    private List<Integer> autoLinkHotels(String destination) {
+        String city = extractPrimaryCity(destination);
+        if (city.isEmpty()) return List.of();
+        return hotelRepository.findAll().stream()
+                .filter(h -> h.isActive()
+                        && h.getCity() != null
+                        && (h.getCity().toLowerCase().contains(city) || city.contains(h.getCity().toLowerCase())))
+                .map(h -> h.getId().intValue())
+                .collect(Collectors.toList());
+    }
+
+    private List<Integer> autoLinkRestaurants(String destination) {
+        String city = extractPrimaryCity(destination);
+        if (city.isEmpty()) return List.of();
+        return restaurantRepository.findAll().stream()
+                .filter(r -> r.isActive()
+                        && r.getCity() != null
+                        && (r.getCity().toLowerCase().contains(city) || city.contains(r.getCity().toLowerCase())))
+                .map(r -> r.getId().intValue())
+                .collect(Collectors.toList());
+    }
+
+    private String buildLinkedJson(List<Integer> ids) {
+        try { return MAPPER.writeValueAsString(ids); }
+        catch (Exception e) { return "[]"; }
+    }
+
     private List<Integer> parseIds(String json) {
         if (json == null || json.isBlank() || json.equals("[]")) return List.of();
         try {
@@ -290,6 +351,18 @@ public class AdminTourController {
         }
     }
 
+    @DeleteMapping("/{id}/images/{imageId}")
+    public ResponseEntity<Void> deleteImage(
+            @PathVariable("id") Long id,
+            @PathVariable("imageId") Long imageId) {
+        imageRepository.findById(imageId).ifPresent(img -> {
+            if (img.getTour().getId().equals(id)) {
+                imageRepository.delete(img);
+            }
+        });
+        return ResponseEntity.noContent().build();
+    }
+
     @Data
     public static class TourItem {
         private long id;
@@ -303,9 +376,11 @@ public class AdminTourController {
         private String status;
         private String imageUrl;
         private List<String> imageUrls;
+        private List<Map<String, Object>> imageList;
         private String description;
         private List<Integer> hotels;
         private List<Integer> restaurants;
+        private List<Integer> destinations;
         private List<Map<String, String>> itinerary;
     }
 }

@@ -24,6 +24,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @RestController
 @RequestMapping("/hotels/{hotelId}/reviews")
@@ -34,6 +35,7 @@ public class HotelReviewController {
     private final HotelRepository hotelRepository;
     private final BookedRoomRepository bookedRoomRepository;
     private final UserRepository userRepository;
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @GetMapping
     public ResponseEntity<List<ReviewResponse>> getReviews(@PathVariable("hotelId") Long hotelId) {
@@ -73,7 +75,9 @@ public class HotelReviewController {
         if (!booking.getGuestEmail().equalsIgnoreCase(email)) {
             throw new IllegalArgumentException("Booking này không thuộc về bạn");
         }
-        if (booking.getCheckOutDate().isAfter(LocalDate.now())) {
+        boolean checkoutPassed = !booking.getCheckOutDate().isAfter(LocalDate.now());
+        boolean isCompleted = booking.getStatus() == com.example.travelManager.util.constant.hotel.HotelBookingStatus.COMPLETED;
+        if (!checkoutPassed && !isCompleted) {
             throw new IllegalStateException("Chỉ được đánh giá sau khi đã check-out");
         }
         if (reviewRepository.existsByBooking_BookingId(booking.getBookingId())) {
@@ -86,6 +90,12 @@ public class HotelReviewController {
         review.setBooking(booking);
         review.setRating(request.getRating());
         review.setComment(request.getComment());
+        review.setHidden(true);
+        review.setStatus("PENDING");
+        if (request.getImages() != null && !request.getImages().isEmpty()) {
+            try { review.setImages(MAPPER.writeValueAsString(request.getImages())); }
+            catch (Exception ignored) {}
+        }
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(toResponse(reviewRepository.save(review)));
@@ -144,6 +154,10 @@ public class HotelReviewController {
         res.setBookingId(r.getBooking() != null ? r.getBooking().getBookingId() : null);
         res.setRating(r.getRating());
         res.setComment(r.getComment());
+        if (r.getImages() != null) {
+            try { res.setImages(MAPPER.readValue(r.getImages(), new com.fasterxml.jackson.core.type.TypeReference<java.util.List<String>>() {})); }
+            catch (Exception ignored) {}
+        }
         res.setAdminReply(r.getAdminReply());
         res.setHidden(r.isHidden());
         res.setCreatedAt(r.getCreatedAt());
@@ -157,6 +171,7 @@ public class HotelReviewController {
         @Min(1) @Max(5)
         private int rating;
         private String comment;
+        private java.util.List<String> images;
     }
 
     @Data
@@ -167,6 +182,7 @@ public class HotelReviewController {
         private Long bookingId;
         private int rating;
         private String comment;
+        private java.util.List<String> images;
         private String adminReply;
         private boolean isHidden;
         private Instant createdAt;

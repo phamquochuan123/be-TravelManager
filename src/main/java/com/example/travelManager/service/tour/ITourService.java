@@ -7,9 +7,11 @@ import org.springframework.web.multipart.MultipartFile;
 import com.example.travelManager.domain.tour.Tour;
 import com.example.travelManager.domain.tour.TourDeparture;
 import com.example.travelManager.domain.tour.TourItinerary;
+import com.example.travelManager.domain.request.tour.TourBookingRequest;
 import com.example.travelManager.domain.request.tour.TourDepartureRequest;
 import com.example.travelManager.domain.request.tour.TourItineraryRequest;
 import com.example.travelManager.domain.request.tour.TourRequest;
+import com.example.travelManager.domain.response.tour.TourBookingResponse;
 
 public interface ITourService {
 
@@ -44,4 +46,11 @@ public interface ITourService {
     void addImage(Long tourId, MultipartFile file) throws Exception;
 
     void deleteImage(Long imageId);
+
+    // --- Booking ---
+    TourBookingResponse bookTour(Long tourId, TourBookingRequest request, String userEmail);
+
+    List<TourBookingResponse> getMyBookings(String userEmail);
+
+    List<TourBookingResponse> getAllBookings();
 }

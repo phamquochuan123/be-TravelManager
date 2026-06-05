@@ -89,6 +89,48 @@ public class AdminReviewController {
         return ResponseEntity.ok(Map.of("reply", reply));
     }
 
+    @PatchMapping("/{id}/approve")
+    public ResponseEntity<Map<String, Object>> approve(@PathVariable("id") String id) {
+        if (id.startsWith("TOUR-")) {
+            TourReview r = tourReviewRepository.findById(Long.parseLong(id.substring(5)))
+                    .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
+            r.setHidden(false); r.setStatus("APPROVED");
+            tourReviewRepository.save(r);
+        } else if (id.startsWith("HOTEL-")) {
+            HotelReview r = hotelReviewRepository.findById(Long.parseLong(id.substring(6)))
+                    .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
+            r.setHidden(false); r.setStatus("APPROVED");
+            hotelReviewRepository.save(r);
+        } else if (id.startsWith("REST-")) {
+            RestaurantReview r = restaurantReviewRepository.findById(Long.parseLong(id.substring(5)))
+                    .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
+            r.setHidden(false); r.setStatus("APPROVED");
+            restaurantReviewRepository.save(r);
+        }
+        return ResponseEntity.ok(Map.of("status", "APPROVED"));
+    }
+
+    @PatchMapping("/{id}/reject")
+    public ResponseEntity<Map<String, Object>> reject(@PathVariable("id") String id) {
+        if (id.startsWith("TOUR-")) {
+            TourReview r = tourReviewRepository.findById(Long.parseLong(id.substring(5)))
+                    .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
+            r.setHidden(true); r.setStatus("REJECTED");
+            tourReviewRepository.save(r);
+        } else if (id.startsWith("HOTEL-")) {
+            HotelReview r = hotelReviewRepository.findById(Long.parseLong(id.substring(6)))
+                    .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
+            r.setHidden(true); r.setStatus("REJECTED");
+            hotelReviewRepository.save(r);
+        } else if (id.startsWith("REST-")) {
+            RestaurantReview r = restaurantReviewRepository.findById(Long.parseLong(id.substring(5)))
+                    .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
+            r.setHidden(true); r.setStatus("REJECTED");
+            restaurantReviewRepository.save(r);
+        }
+        return ResponseEntity.ok(Map.of("status", "REJECTED"));
+    }
+
     @PatchMapping("/{id}/visibility")
     public ResponseEntity<Map<String, Object>> toggleVisibility(
             @PathVariable("id") String id,
@@ -133,6 +175,7 @@ public class AdminReviewController {
             item.setComment(r.getComment() != null ? r.getComment() : "");
             item.setAdminReply(r.getAdminReply());
             item.setVisible(!r.isHidden());
+            item.setStatus(r.getStatus() != null ? r.getStatus() : "PENDING");
             item.setCreatedAt(r.getCreatedAt() != null ? r.getCreatedAt().toString() : "");
             item.setCreatedAtInstant(r.getCreatedAt());
             items.add(item);
@@ -152,6 +195,7 @@ public class AdminReviewController {
             item.setComment(r.getComment() != null ? r.getComment() : "");
             item.setAdminReply(r.getAdminReply());
             item.setVisible(!r.isHidden());
+            item.setStatus(r.getStatus() != null ? r.getStatus() : "PENDING");
             item.setCreatedAt(r.getCreatedAt() != null ? r.getCreatedAt().toString() : "");
             item.setCreatedAtInstant(r.getCreatedAt());
             items.add(item);
@@ -171,6 +215,7 @@ public class AdminReviewController {
             item.setComment(r.getComment() != null ? r.getComment() : "");
             item.setAdminReply(r.getAdminReply());
             item.setVisible(!r.isHidden());
+            item.setStatus(r.getStatus() != null ? r.getStatus() : "PENDING");
             item.setCreatedAt(r.getCreatedAt() != null ? r.getCreatedAt().toString() : "");
             item.setCreatedAtInstant(r.getCreatedAt());
             items.add(item);
@@ -190,6 +235,7 @@ public class AdminReviewController {
         private List<String> images;
         private String adminReply;
         private boolean visible;
+        private String status; // PENDING | APPROVED | REJECTED
         private String createdAt;
         private Instant createdAtInstant;
     }

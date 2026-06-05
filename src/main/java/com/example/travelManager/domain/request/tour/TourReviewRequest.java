@@ -16,4 +16,6 @@ public class TourReviewRequest {
     private int rating;
 
     private String comment;
+
+    private java.util.List<String> images;
 }

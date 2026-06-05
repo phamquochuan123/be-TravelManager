@@ -15,11 +15,12 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.multipart.MultipartHttpServletRequest;
 
-import javax.sql.rowset.serial.SerialBlob;
 import java.math.BigDecimal;
 import java.sql.Blob;
 import java.util.*;
 import java.util.stream.Collectors;
+
+import javax.sql.rowset.serial.SerialBlob;
 
 @RestController
 @RequestMapping("/admin/hotels")
@@ -64,6 +65,7 @@ public class AdminHotelController {
     public ResponseEntity<HotelItem> create(
             @RequestParam(name = "name") String name,
             @RequestParam(name = "address", required = false, defaultValue = "") String address,
+            @RequestParam(name = "city", required = false, defaultValue = "") String city,
             @RequestParam(name = "stars", defaultValue = "3") int stars,
             @RequestParam(name = "description", required = false, defaultValue = "") String description,
             @RequestParam(name = "amenities", required = false, defaultValue = "[]") String amenities,
@@ -74,6 +76,7 @@ public class AdminHotelController {
         Hotel hotel = new Hotel();
         hotel.setName(name);
         hotel.setAddress(address);
+        hotel.setCity(city.isBlank() ? null : city);
         hotel.setStarRating(stars);
         hotel.setDescription(description);
         hotel.setAmenities(amenities);
@@ -93,6 +96,7 @@ public class AdminHotelController {
             @PathVariable("id") Long id,
             @RequestParam(name = "name") String name,
             @RequestParam(name = "address", required = false, defaultValue = "") String address,
+            @RequestParam(name = "city", required = false, defaultValue = "") String city,
             @RequestParam(name = "stars", defaultValue = "3") int stars,
             @RequestParam(name = "description", required = false, defaultValue = "") String description,
             @RequestParam(name = "amenities", required = false, defaultValue = "[]") String amenities,
@@ -104,6 +108,7 @@ public class AdminHotelController {
                 .orElseThrow(() -> new ResourceNotFoundException("Hotel not found: " + id));
         hotel.setName(name);
         hotel.setAddress(address);
+        hotel.setCity(city.isBlank() ? null : city);
         hotel.setStarRating(stars);
         hotel.setDescription(description);
         hotel.setAmenities(amenities);
@@ -127,7 +132,8 @@ public class AdminHotelController {
     }
 
     private void saveRooms(Hotel hotel, String roomTypesJson, MultipartHttpServletRequest req) throws Exception {
-        List<Map<String, Object>> rooms = MAPPER.readValue(roomTypesJson, new TypeReference<>() {});
+        List<Map<String, Object>> rooms = MAPPER.readValue(roomTypesJson, new TypeReference<>() {
+        });
         for (int i = 0; i < rooms.size(); i++) {
             Map<String, Object> r = rooms.get(i);
             Object idVal = r.get("id");
@@ -148,7 +154,7 @@ public class AdminHotelController {
             if (req != null) {
                 MultipartFile roomImg = req.getFile("roomImage_" + i);
                 if (roomImg != null && !roomImg.isEmpty()) {
-                    room.setPhoto(new SerialBlob(roomImg.getBytes()));
+                    room.setPhoto(roomImg.getBytes());
                 }
             }
             roomRepository.save(room);
@@ -177,7 +183,7 @@ public class AdminHotelController {
             m.put("area", r.getArea() != null ? r.getArea() : 0);
             m.put("capacity", r.getMaxGuests());
             m.put("pricePerNight", r.getRoomPrice() != null ? r.getRoomPrice().doubleValue() : 0);
-            m.put("imageUrl", blobToDataUrl(r.getPhoto()));
+            m.put("imageUrl", bytesToDataUrl(r.getPhoto()));
             return m;
         }).collect(Collectors.toList()));
 
@@ -185,16 +191,19 @@ public class AdminHotelController {
     }
 
     private List<String> parseStringList(String json) {
-        if (json == null || json.isBlank()) return List.of();
+        if (json == null || json.isBlank())
+            return List.of();
         try {
-            return MAPPER.readValue(json, new TypeReference<>() {});
+            return MAPPER.readValue(json, new TypeReference<>() {
+            });
         } catch (Exception e) {
             return List.of();
         }
     }
 
     private String blobToDataUrl(Blob blob) {
-        if (blob == null) return null;
+        if (blob == null)
+            return null;
         try {
             byte[] bytes = blob.getBytes(1, (int) blob.length());
             return "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(bytes);
@@ -203,23 +212,48 @@ public class AdminHotelController {
         }
     }
 
+    private String bytesToDataUrl(byte[] bytes) {
+        if (bytes == null || bytes.length == 0)
+            return null;
+        return "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(bytes);
+    }
+
     private String getString(Map<String, Object> m, String key) {
-        Object v = m.get(key); return v != null ? v.toString() : "";
+        Object v = m.get(key);
+        return v != null ? v.toString() : "";
     }
 
     private int getInt(Map<String, Object> m, String key) {
-        Object v = m.get(key); if (v == null) return 0;
-        try { return Integer.parseInt(v.toString()); } catch (Exception e) { return 0; }
+        Object v = m.get(key);
+        if (v == null)
+            return 0;
+        try {
+            return Integer.parseInt(v.toString());
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     private double getDouble(Map<String, Object> m, String key) {
-        Object v = m.get(key); if (v == null) return 0;
-        try { return Double.parseDouble(v.toString()); } catch (Exception e) { return 0; }
+        Object v = m.get(key);
+        if (v == null)
+            return 0;
+        try {
+            return Double.parseDouble(v.toString());
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     private BigDecimal getBigDecimal(Map<String, Object> m, String key) {
-        Object v = m.get(key); if (v == null) return BigDecimal.ZERO;
-        try { return new BigDecimal(v.toString()); } catch (Exception e) { return BigDecimal.ZERO; }
+        Object v = m.get(key);
+        if (v == null)
+            return BigDecimal.ZERO;
+        try {
+            return new BigDecimal(v.toString());
+        } catch (Exception e) {
+            return BigDecimal.ZERO;
+        }
     }
 
     @Data
@@ -236,4 +270,3 @@ public class AdminHotelController {
         private String status;
     }
 }
-

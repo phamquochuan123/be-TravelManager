@@ -12,6 +12,7 @@ public class TourReviewResponse {
     private Long bookingId;
     private int rating;
     private String comment;
+    private java.util.List<String> images;
     private String adminReply;
     private boolean isHidden;
     private Instant createdAt;

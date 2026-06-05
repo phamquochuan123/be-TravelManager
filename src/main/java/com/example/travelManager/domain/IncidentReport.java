@@ -40,6 +40,12 @@ public class IncidentReport {
     @Column(columnDefinition = "TEXT")
     private String adminNote; // Admin phản hồi
 
+    @Column(length = 20)
+    private String severity; // LOW, MEDIUM, HIGH, URGENT
+
+    @Column(columnDefinition = "LONGTEXT")
+    private String imageData; // JSON array of base64 data URLs
+
     private Instant createdAt;
     private Instant updatedAt;
 

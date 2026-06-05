@@ -96,6 +96,9 @@ public class TourSeasonalPriceController {
         res.setSeasonType(p.getSeasonType());
         res.setPriceAdult(p.getPriceAdult());
         res.setPriceChild(p.getPriceChild());
+        LocalDate today = LocalDate.now();
+        res.setIsActive(p.getStartDate() != null && p.getEndDate() != null
+                && !today.isBefore(p.getStartDate()) && !today.isAfter(p.getEndDate()));
         return res;
     }
 
@@ -107,7 +110,6 @@ public class TourSeasonalPriceController {
         private LocalDate startDate;
         @NotNull
         private LocalDate endDate;
-        @NotNull
         private SeasonType seasonType;
         @NotNull
         private BigDecimal priceAdult;
@@ -125,6 +127,7 @@ public class TourSeasonalPriceController {
         private SeasonType seasonType;
         private BigDecimal priceAdult;
         private BigDecimal priceChild;
+        private Boolean isActive;
     }
 }
 

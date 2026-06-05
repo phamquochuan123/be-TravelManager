@@ -5,15 +5,20 @@ import com.example.travelManager.domain.request.restaurant.RestaurantBookingRequ
 import com.example.travelManager.domain.request.restaurant.RestaurantRequest;
 import com.example.travelManager.domain.restaurant.Restaurant;
 import com.example.travelManager.domain.restaurant.RestaurantBooking;
+import com.example.travelManager.domain.restaurant.RestaurantFavorite;
 import com.example.travelManager.domain.response.restaurant.RestaurantBookingResponse;
 import com.example.travelManager.domain.response.restaurant.RestaurantResponse;
+import com.example.travelManager.domain.tour.TourBooking;
 import com.example.travelManager.exception.ResourceNotFoundException;
 import com.example.travelManager.repository.UserRepository;
 import com.example.travelManager.repository.restaurant.RestaurantBookingRepository;
+import com.example.travelManager.repository.restaurant.RestaurantFavoriteRepository;
+import com.example.travelManager.repository.tour.TourBookingRepository;
 import com.example.travelManager.service.EmailService;
 import com.example.travelManager.service.restaurant.IRestaurantService;
 import com.example.travelManager.util.SecurityUtil;
 import com.example.travelManager.util.constant.restaurant.RestaurantBookingStatus;
+import org.springframework.web.server.ResponseStatusException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -25,6 +30,8 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @RestController
@@ -34,8 +41,10 @@ public class RestaurantController {
 
     private final IRestaurantService restaurantService;
     private final RestaurantBookingRepository bookingRepository;
+    private final RestaurantFavoriteRepository favoriteRepository;
     private final UserRepository userRepository;
     private final EmailService emailService;
+    private final TourBookingRepository tourBookingRepository;
 
     // ── Restaurant CRUD ──────────────────────────────────────────
 
@@ -48,12 +57,29 @@ public class RestaurantController {
 
     @GetMapping
     public ResponseEntity<List<RestaurantResponse>> getAll(
-            @RequestParam(value = "city", required = false) String city,
-            @RequestParam(value = "admin", defaultValue = "false") boolean admin) {
+            @RequestParam(name = "city", required = false) String city,
+            @RequestParam(name = "destination", required = false) String destination,
+            @RequestParam(name = "search", required = false) String search,
+            @RequestParam(name = "admin", defaultValue = "false") boolean admin) {
         List<Restaurant> list;
-        if (admin) list = restaurantService.getAllAdmin();
-        else if (city != null) list = restaurantService.getByCity(city);
-        else list = restaurantService.getAllActive();
+        if (admin) {
+            list = restaurantService.getAllAdmin();
+        } else {
+            list = restaurantService.getAllActive();
+            String cityFilter = city != null ? city : destination;
+            if (cityFilter != null && !cityFilter.isBlank()) {
+                final String cf = cityFilter.toLowerCase();
+                list = list.stream()
+                        .filter(r -> r.getCity() != null && (r.getCity().toLowerCase().contains(cf) || cf.contains(r.getCity().toLowerCase())))
+                        .collect(java.util.stream.Collectors.toList());
+            }
+            if (search != null && !search.isBlank()) {
+                final String s = search.toLowerCase();
+                list = list.stream()
+                        .filter(r -> r.getName() != null && r.getName().toLowerCase().contains(s))
+                        .collect(java.util.stream.Collectors.toList());
+            }
+        }
         return ResponseEntity.ok(list.stream().map(this::toResponse).toList());
     }
 
@@ -99,6 +125,26 @@ public class RestaurantController {
         UserEntity user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         Restaurant restaurant = restaurantService.getById(restaurantId);
+
+        if (request.getTourBookingId() != null) {
+            TourBooking tourBooking = tourBookingRepository.findById(request.getTourBookingId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Tour booking không tồn tại: " + request.getTourBookingId()));
+            if (!tourBooking.getUser().getEmail().equalsIgnoreCase(email)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Tour booking không thuộc về người dùng hiện tại");
+            }
+            String tourDest = tourBooking.getTour().getDestination();
+            String restCity = restaurant.getCity();
+            if (tourDest != null && restCity != null) {
+                String d = tourDest.toLowerCase().split("[–\\-/,]")[0].trim();
+                String c = restCity.toLowerCase();
+                if (!c.contains(d) && !d.contains(c)) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Nhà hàng ở " + restCity + " không phù hợp với tour đến " + tourDest);
+                }
+            }
+        }
 
         RestaurantBooking booking = new RestaurantBooking();
         booking.setRestaurant(restaurant);
@@ -161,6 +207,52 @@ public class RestaurantController {
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
         booking.setStatus(RestaurantBookingStatus.CANCELLED);
         return ResponseEntity.ok(toBookingResponse(bookingRepository.save(booking)));
+    }
+
+    // ── Favorites ─────────────────────────────────────────────────
+
+    @PostMapping("/{restaurantId}/favorite")
+    public ResponseEntity<Map<String, Object>> toggleFavorite(@PathVariable("restaurantId") Long restaurantId) {
+        String email = SecurityUtil.getCurrentUserLogin()
+                .orElseThrow(() -> new RuntimeException("Not authenticated"));
+        UserEntity user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        Restaurant restaurant = restaurantService.getById(restaurantId);
+        Optional<RestaurantFavorite> existing = favoriteRepository.findByUserIdAndRestaurantId(user.getId(), restaurantId);
+        boolean favorited;
+        if (existing.isPresent()) {
+            favoriteRepository.delete(existing.get());
+            favorited = false;
+        } else {
+            RestaurantFavorite fav = new RestaurantFavorite();
+            fav.setUser(user);
+            fav.setRestaurant(restaurant);
+            favoriteRepository.save(fav);
+            favorited = true;
+        }
+        return ResponseEntity.ok(Map.of("favorited", favorited));
+    }
+
+    @GetMapping("/{restaurantId}/favorite")
+    public ResponseEntity<Map<String, Object>> checkFavorite(@PathVariable("restaurantId") Long restaurantId) {
+        String email = SecurityUtil.getCurrentUserLogin().orElse(null);
+        if (email == null) return ResponseEntity.ok(Map.of("favorited", false));
+        UserEntity user = userRepository.findByEmail(email).orElse(null);
+        if (user == null) return ResponseEntity.ok(Map.of("favorited", false));
+        boolean favorited = favoriteRepository.existsByUserIdAndRestaurantId(user.getId(), restaurantId);
+        return ResponseEntity.ok(Map.of("favorited", favorited));
+    }
+
+    @GetMapping("/my-favorites")
+    public ResponseEntity<List<RestaurantResponse>> getMyFavorites() {
+        String email = SecurityUtil.getCurrentUserLogin().orElse(null);
+        if (email == null) return ResponseEntity.ok(java.util.List.of());
+        UserEntity user = userRepository.findByEmail(email).orElse(null);
+        if (user == null) return ResponseEntity.ok(java.util.List.of());
+        List<Long> restaurantIds = favoriteRepository.findByUserId(user.getId())
+                .stream().map(f -> f.getRestaurant().getId()).toList();
+        return ResponseEntity.ok(restaurantIds.stream()
+                .map(id -> toResponse(restaurantService.getById(id))).toList());
     }
 
     // ── Helpers ───────────────────────────────────────────────────

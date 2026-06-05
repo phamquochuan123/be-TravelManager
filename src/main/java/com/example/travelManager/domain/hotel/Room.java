@@ -1,7 +1,6 @@
 package com.example.travelManager.domain.hotel;
 
 import java.math.BigDecimal;
-import java.sql.Blob;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -45,7 +44,8 @@ public class Room {
     private String description;
 
     @Lob
-    private Blob photo;
+    @Column(columnDefinition = "LONGBLOB")
+    private byte[] photo;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "hotel_id")

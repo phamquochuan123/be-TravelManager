@@ -27,4 +27,6 @@ public class BookingRequest {
 
     @Min(0)
     private int numOfChildren;
+
+    private Long tourBookingId;
 }

@@ -32,8 +32,11 @@ public class AdminOrderController {
     private final BookedRoomRepository hotelBookingRepository;
 
     @GetMapping("/counts")
-    public ResponseEntity<Map<String, Object>> counts() {
-        List<OrderItem> all = buildAll();
+    public ResponseEntity<Map<String, Object>> counts(
+            @RequestParam(name = "serviceType", required = false) String serviceType) {
+        List<OrderItem> all = buildAll().stream()
+                .filter(o -> serviceType == null || serviceType.equalsIgnoreCase(o.getServiceType()))
+                .collect(Collectors.toList());
         Map<String, Long> byStatus = all.stream()
                 .collect(Collectors.groupingBy(o -> o.getStatus(), Collectors.counting()));
 
@@ -139,7 +142,11 @@ public class AdminOrderController {
         o.setCustomerName(b.getContactName() != null ? b.getContactName() : "");
         o.setCustomerEmail(b.getContactEmail() != null ? b.getContactEmail() : "");
         o.setCustomerPhone(b.getContactPhone());
-        o.setTotalAmount(b.getFinalPrice() != null ? b.getFinalPrice() : BigDecimal.ZERO);
+        BigDecimal computedTotal = b.getFinalPrice() != null ? b.getFinalPrice()
+                : (b.getOriginalPrice() != null ? b.getOriginalPrice() : BigDecimal.ZERO)
+                .add(b.getPackageHotelPrice() != null ? b.getPackageHotelPrice() : BigDecimal.ZERO)
+                .subtract(b.getDiscountAmount() != null ? b.getDiscountAmount() : BigDecimal.ZERO);
+        o.setTotalAmount(computedTotal);
         o.setStatus(b.getStatus() != null ? b.getStatus().name() : "PENDING");
         o.setCreatedAt(b.getCreatedAt() != null ? b.getCreatedAt().toString() : "");
         o.setCreatedAtInstant(b.getCreatedAt());
@@ -149,11 +156,42 @@ public class AdminOrderController {
             String ca = o.getCreatedAt();
             o.setUseDate(ca.length() >= 10 ? ca.substring(0, 10) : ca);
         }
+
+        // Hotel booking info
+        if (b.getBookedRoom() != null) {
+            BookedRoom br = b.getBookedRoom();
+            if (br.getRoom() != null && br.getRoom().getHotel() != null) {
+                o.setHotelName(br.getRoom().getHotel().getName());
+                o.setRoomType(br.getRoom().getRoomType());
+            }
+            o.setCheckInDate(br.getCheckInDate() != null ? br.getCheckInDate().toString() : null);
+            o.setCheckOutDate(br.getCheckOutDate() != null ? br.getCheckOutDate().toString() : null);
+        }
+
+        // Restaurant booking info
+        if (b.getRestaurantBooking() != null) {
+            RestaurantBooking rb = b.getRestaurantBooking();
+            if (rb.getRestaurant() != null) {
+                o.setRestaurantName(rb.getRestaurant().getName());
+            }
+            o.setRestaurantBookingDate(b.getRestaurantBooking().getBookingDate() != null
+                    ? b.getRestaurantBooking().getBookingDate().toString() : null);
+        }
+
+        o.setPackageHotelPrice(b.getPackageHotelPrice());
+        o.setPackageRestaurantPrice(b.getPackageRestaurantPrice());
+        o.setPackageDiscountPercent(b.getTour() != null ? b.getTour().getPackageDiscountPercent() : null);
+
+        // Price breakdown
         List<Map<String, Object>> breakdown = new ArrayList<>();
-        if (b.getOriginalPrice() != null) breakdown.add(Map.of("label", "Giá gốc", "amount", b.getOriginalPrice()));
+        if (b.getOriginalPrice() != null) breakdown.add(Map.of("label", "Giá tour", "amount", b.getOriginalPrice()));
+        if (b.getPackageHotelPrice() != null && b.getPackageHotelPrice().compareTo(BigDecimal.ZERO) > 0)
+            breakdown.add(Map.of("label", "Khách sạn", "amount", b.getPackageHotelPrice()));
+        // Restaurant is paid on-site — shown separately in the UI, not included in payment total
         if (b.getDiscountAmount() != null && b.getDiscountAmount().compareTo(BigDecimal.ZERO) > 0)
             breakdown.add(Map.of("label", "Giảm giá", "amount", b.getDiscountAmount().negate()));
         o.setBreakdown(breakdown);
+
         if (b.getAdminNote() != null) {
             Instant changedAt = b.getUpdatedAt() != null ? b.getUpdatedAt() : b.getCreatedAt();
             Map<String, Object> entry = new HashMap<>();
@@ -223,6 +261,18 @@ public class AdminOrderController {
         private Instant createdAtInstant;
         private List<Map<String, Object>> breakdown;
         private List<Map<String, Object>> statusHistory;
+        // Tour package — hotel info
+        private String hotelName;
+        private String roomType;
+        private String checkInDate;
+        private String checkOutDate;
+        private BigDecimal packageHotelPrice;
+        // Tour package — restaurant info
+        private String restaurantName;
+        private String restaurantBookingDate;
+        private BigDecimal packageRestaurantPrice;
+        // Tour package — discount
+        private Double packageDiscountPercent;
     }
 }
 

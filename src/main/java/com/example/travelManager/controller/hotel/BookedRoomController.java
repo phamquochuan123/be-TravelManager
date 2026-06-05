@@ -4,8 +4,12 @@ import com.example.travelManager.domain.hotel.BookedRoom;
 import com.example.travelManager.domain.hotel.Hotel;
 import com.example.travelManager.domain.request.hotel.BookingRequest;
 import com.example.travelManager.domain.response.hotel.BookingResponse;
+import com.example.travelManager.domain.tour.TourBooking;
+import com.example.travelManager.repository.hotel.HotelRepository;
+import com.example.travelManager.repository.tour.TourBookingRepository;
 import com.example.travelManager.service.EmailService;
 import com.example.travelManager.service.hotel.IBookedRoomService;
+import com.example.travelManager.util.SecurityUtil;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -23,12 +27,37 @@ public class BookedRoomController {
 
     private final IBookedRoomService bookedRoomService;
     private final EmailService emailService;
+    private final TourBookingRepository tourBookingRepository;
+    private final HotelRepository hotelRepository;
 
     @PostMapping("/hotels/{hotelId}/rooms/{roomId}/bookings")
     public ResponseEntity<BookingResponse> bookRoom(
             @PathVariable("hotelId") Long hotelId,
             @PathVariable("roomId") Long roomId,
             @Valid @RequestBody BookingRequest request) {
+        if (request.getTourBookingId() != null) {
+            TourBooking tourBooking = tourBookingRepository.findById(request.getTourBookingId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                            "Tour booking không tồn tại: " + request.getTourBookingId()));
+            String currentEmail = SecurityUtil.getCurrentUserLogin().orElse("");
+            if (!tourBooking.getUser().getEmail().equalsIgnoreCase(currentEmail)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Tour booking không thuộc về người dùng hiện tại");
+            }
+            Hotel hotel = hotelRepository.findById(hotelId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                            "Hotel không tồn tại: " + hotelId));
+            String tourDest  = tourBooking.getTour().getDestination();
+            String hotelCity = hotel.getCity();
+            if (tourDest != null && hotelCity != null) {
+                String d = tourDest.toLowerCase().split("[–\\-/,]")[0].trim();
+                String c = hotelCity.toLowerCase();
+                if (!c.contains(d) && !d.contains(c)) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Khách sạn ở " + hotelCity + " không phù hợp với tour đến " + tourDest);
+                }
+            }
+        }
         String confirmationCode = bookedRoomService.bookRoom(hotelId, roomId, request);
         BookedRoom booking = bookedRoomService.findByConfirmationCode(confirmationCode);
         try {
@@ -116,7 +145,7 @@ public class BookedRoomController {
         res.setHotelId(hotel != null ? hotel.getId() : null);
         res.setHotelName(hotel != null ? hotel.getName() : null);
         res.setRoomType(b.getRoom() != null ? b.getRoom().getRoomType() : null);
-        res.setStatus("CONFIRMED");
+        res.setStatus(b.getStatus() != null ? b.getStatus().name() : "PENDING");
         return res;
     }
 }

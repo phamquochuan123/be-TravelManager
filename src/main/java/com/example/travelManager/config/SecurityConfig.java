@@ -80,10 +80,16 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/hotels/*/rooms/*/bookings").authenticated()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/restaurants/*/bookings").authenticated()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/tour-bookings/**").authenticated()
+                        // Các route USER authenticated phải đứng TRƯỚC wildcard ADMIN/STAFF để không bị shadow
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/tours/*/favorite", "/hotels/*/favorite", "/restaurants/*/favorite").authenticated()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/tours/my-favorites", "/hotels/my-favorites", "/restaurants/my-favorites").authenticated()
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/hotels/*/reviews", "/restaurants/*/reviews").authenticated()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/hotels/**", "/rooms/**").hasAnyRole("ADMIN", "STAFF")
                         .requestMatchers(org.springframework.http.HttpMethod.PUT, "/hotels/**", "/rooms/**").hasAnyRole("ADMIN", "STAFF")
                         .requestMatchers(org.springframework.http.HttpMethod.PATCH, "/hotels/**", "/rooms/**").hasAnyRole("ADMIN", "STAFF")
                         .requestMatchers(org.springframework.http.HttpMethod.DELETE, "/hotels/**", "/rooms/**").hasAnyRole("ADMIN", "STAFF")
+                        .requestMatchers(org.springframework.http.HttpMethod.PATCH,
+                                "/restaurants/bookings/*/cancel").authenticated()
                         .requestMatchers(org.springframework.http.HttpMethod.POST,
                                 "/restaurants/**", "/destinations/**").hasAnyRole("ADMIN", "STAFF")
                         .requestMatchers(org.springframework.http.HttpMethod.PUT,

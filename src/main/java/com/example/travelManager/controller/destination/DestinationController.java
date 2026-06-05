@@ -33,12 +33,28 @@ public class DestinationController {
 
     @GetMapping
     public ResponseEntity<List<DestinationResponse>> getAll(
-            @RequestParam(value = "city", required = false) String city,
-            @RequestParam(value = "admin", defaultValue = "false") boolean admin) {
+            @RequestParam(name = "city", required = false) String city,
+            @RequestParam(name = "search", required = false) String search,
+            @RequestParam(name = "admin", defaultValue = "false") boolean admin) {
         List<Destination> list;
-        if (admin) list = destinationService.getAllAdmin();
-        else if (city != null) list = destinationService.getByCity(city);
-        else list = destinationService.getAllActive();
+        if (admin) {
+            list = destinationService.getAllAdmin();
+        } else {
+            list = destinationService.getAllActive();
+            if (city != null && !city.isBlank()) {
+                final String cf = city.toLowerCase();
+                list = list.stream()
+                        .filter(d -> (d.getCity() != null && d.getCity().toLowerCase().contains(cf))
+                                || (d.getName() != null && d.getName().toLowerCase().contains(cf)))
+                        .collect(java.util.stream.Collectors.toList());
+            }
+            if (search != null && !search.isBlank()) {
+                final String s = search.toLowerCase();
+                list = list.stream()
+                        .filter(d -> d.getName() != null && d.getName().toLowerCase().contains(s))
+                        .collect(java.util.stream.Collectors.toList());
+            }
+        }
         return ResponseEntity.ok(list.stream().map(this::toResponse).toList());
     }
 

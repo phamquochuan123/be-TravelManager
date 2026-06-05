@@ -1,11 +1,15 @@
 package com.example.travelManager.controller.hotel;
 
 import com.example.travelManager.domain.hotel.Hotel;
+import com.example.travelManager.domain.hotel.HotelFavorite;
 import com.example.travelManager.domain.hotel.Room;
 import com.example.travelManager.domain.request.hotel.HotelRequest;
 import com.example.travelManager.domain.request.hotel.RoomCreateRequest;
 import com.example.travelManager.domain.response.hotel.HotelResponse;
 import com.example.travelManager.domain.response.hotel.RoomResponse;
+import com.example.travelManager.exception.ResourceNotFoundException;
+import com.example.travelManager.repository.UserRepository;
+import com.example.travelManager.repository.hotel.HotelFavoriteRepository;
 import com.example.travelManager.service.hotel.IHotelService;
 import com.example.travelManager.service.hotel.IRoomService;
 import com.example.travelManager.util.SecurityUtil;
@@ -22,6 +26,8 @@ import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/hotels")
@@ -30,6 +36,8 @@ public class HotelController {
 
     private final IHotelService hotelService;
     private final IRoomService roomService;
+    private final HotelFavoriteRepository favoriteRepository;
+    private final UserRepository userRepository;
 
     // ── Hotel CRUD ──────────────────────────────────────────────
 
@@ -42,15 +50,28 @@ public class HotelController {
 
     @GetMapping
     public ResponseEntity<List<HotelResponse>> getAllHotels(
-            @RequestParam(value = "city", required = false) String city,
-            @RequestParam(value = "admin", required = false, defaultValue = "false") boolean admin) {
+            @RequestParam(name = "city", required = false) String city,
+            @RequestParam(name = "destination", required = false) String destination,
+            @RequestParam(name = "search", required = false) String search,
+            @RequestParam(name = "admin", required = false, defaultValue = "false") boolean admin) {
         List<Hotel> hotels;
         if (admin) {
             hotels = hotelService.getAllHotelsAdmin();
-        } else if (city != null) {
-            hotels = hotelService.getHotelsByCity(city);
         } else {
             hotels = hotelService.getAllHotels();
+            String cityFilter = city != null ? city : destination;
+            if (cityFilter != null && !cityFilter.isBlank()) {
+                final String cf = cityFilter.toLowerCase();
+                hotels = hotels.stream()
+                        .filter(h -> h.getCity() != null && (h.getCity().toLowerCase().contains(cf) || cf.contains(h.getCity().toLowerCase())))
+                        .collect(java.util.stream.Collectors.toList());
+            }
+            if (search != null && !search.isBlank()) {
+                final String s = search.toLowerCase();
+                hotels = hotels.stream()
+                        .filter(h -> h.getName() != null && h.getName().toLowerCase().contains(s))
+                        .collect(java.util.stream.Collectors.toList());
+            }
         }
         return ResponseEntity.ok(hotels.stream().map(this::toResponse).toList());
     }
@@ -155,6 +176,53 @@ public class HotelController {
         return ResponseEntity.noContent().build();
     }
 
+    // ── Favorites ────────────────────────────────────────────────
+
+    @PostMapping("/{hotelId}/favorite")
+    public ResponseEntity<Map<String, Object>> toggleFavorite(@PathVariable("hotelId") Long hotelId) {
+        String email = SecurityUtil.getCurrentUserLogin()
+                .orElseThrow(() -> new RuntimeException("Not authenticated"));
+        com.example.travelManager.domain.UserEntity user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        Hotel hotel = hotelService.getHotelById(hotelId);
+        Optional<HotelFavorite> existing = favoriteRepository.findByUserIdAndHotelId(user.getId(), hotelId);
+        boolean favorited;
+        if (existing.isPresent()) {
+            favoriteRepository.delete(existing.get());
+            favorited = false;
+        } else {
+            HotelFavorite fav = new HotelFavorite();
+            fav.setUser(user);
+            fav.setHotel(hotel);
+            favoriteRepository.save(fav);
+            favorited = true;
+        }
+        return ResponseEntity.ok(Map.of("favorited", favorited));
+    }
+
+    @GetMapping("/{hotelId}/favorite")
+    public ResponseEntity<Map<String, Object>> checkFavorite(@PathVariable("hotelId") Long hotelId) {
+        String email = SecurityUtil.getCurrentUserLogin().orElse(null);
+        if (email == null) return ResponseEntity.ok(Map.of("favorited", false));
+        com.example.travelManager.domain.UserEntity user = userRepository.findByEmail(email).orElse(null);
+        if (user == null) return ResponseEntity.ok(Map.of("favorited", false));
+        boolean favorited = favoriteRepository.existsByUserIdAndHotelId(user.getId(), hotelId);
+        return ResponseEntity.ok(Map.of("favorited", favorited));
+    }
+
+    @GetMapping("/my-favorites")
+    public ResponseEntity<List<HotelResponse>> getMyFavorites() {
+        String email = SecurityUtil.getCurrentUserLogin().orElse(null);
+        if (email == null) return ResponseEntity.ok(java.util.List.of());
+        com.example.travelManager.domain.UserEntity user = userRepository.findByEmail(email)
+                .orElse(null);
+        if (user == null) return ResponseEntity.ok(java.util.List.of());
+        List<Long> hotelIds = favoriteRepository.findByUserId(user.getId())
+                .stream().map(f -> f.getHotel().getId()).toList();
+        return ResponseEntity.ok(hotelIds.stream()
+                .map(id -> toResponse(hotelService.getHotelById(id))).toList());
+    }
+
     // ── Helpers ──────────────────────────────────────────────────
 
     private HotelResponse toResponse(Hotel hotel) {
@@ -179,16 +247,11 @@ public class HotelController {
     }
 
     private RoomResponse toRoomResponse(Room room, Long hotelId) {
-        byte[] photoBytes = null;
-        if (room.getPhoto() != null) {
-            try { photoBytes = room.getPhoto().getBytes(1, (int) room.getPhoto().length()); }
-            catch (SQLException ignored) {}
-        }
         String hotelName = room.getHotel() != null ? room.getHotel().getName() : null;
         return new RoomResponse(room.getId(), room.getRoomNumber(), room.getRoomType(),
                 room.getRoomPrice(), room.getStatus(), room.getMaxGuests(), room.getNumBeds(),
                 room.getArea(), room.getDescription(), room.isBooked(),
-                photoBytes, hotelId, hotelName,
+                room.getPhoto(), hotelId, hotelName,
                 Collections.emptyList());
     }
 }

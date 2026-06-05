@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 import com.example.travelManager.domain.UserEntity;
+import com.example.travelManager.domain.hotel.BookedRoom;
+import com.example.travelManager.domain.restaurant.RestaurantBooking;
 import com.example.travelManager.util.constant.tour.BookingStatus;
 
 import jakarta.persistence.Column;
@@ -52,6 +54,14 @@ public class TourBooking {
     @JoinColumn(name = "coupon_id")
     private TourCoupon coupon; // nullable - co the khong dung ma
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "booked_room_id")
+    private BookedRoom bookedRoom; // nullable - chi co khi tour >= 2 ngay va khach chon hotel
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "restaurant_booking_id")
+    private RestaurantBooking restaurantBooking; // nullable - tuy chon
+
     // thong tin lien he
     private String contactName;
     private String contactPhone;
@@ -61,9 +71,11 @@ public class TourBooking {
     private int numChildren;
 
     // tien
-    private BigDecimal originalPrice;  // gia goc
-    private BigDecimal discountAmount; // so tien giam
-    private BigDecimal finalPrice;     // gia cuoi cung = originalPrice - discountAmount
+    private BigDecimal originalPrice;       // gia goc (tong truoc discount)
+    private BigDecimal packageHotelPrice;   // phan gia hotel trong package
+    private BigDecimal packageRestaurantPrice; // phan gia restaurant trong package
+    private BigDecimal discountAmount;      // tong so tien giam (package + coupon)
+    private BigDecimal finalPrice;          // gia cuoi cung
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

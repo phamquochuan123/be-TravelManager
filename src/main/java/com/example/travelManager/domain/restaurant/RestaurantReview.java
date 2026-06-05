@@ -35,10 +35,15 @@ public class RestaurantReview {
     @Column(columnDefinition = "TEXT")
     private String comment;
 
+    @Column(columnDefinition = "LONGTEXT")
+    private String images; // JSON array of base64 strings
+
     @Column(columnDefinition = "TEXT")
     private String adminReply;
 
-    private boolean isHidden = false;
+    private boolean isHidden = true;
+
+    private String status = "PENDING"; // PENDING | APPROVED | REJECTED
 
     private Instant createdAt;
 

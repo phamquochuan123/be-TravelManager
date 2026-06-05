@@ -3,6 +3,12 @@ package com.example.travelManager.controller.tour;
 import java.sql.SQLException;
 import java.util.List;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.util.Map;
+import java.util.Optional;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -20,11 +26,14 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.example.travelManager.domain.tour.Tour;
 import com.example.travelManager.domain.tour.TourDeparture;
+import com.example.travelManager.domain.tour.TourFavorite;
 import com.example.travelManager.domain.tour.TourImage;
 import com.example.travelManager.domain.tour.TourItinerary;
+import com.example.travelManager.domain.request.tour.TourBookingRequest;
 import com.example.travelManager.domain.request.tour.TourDepartureRequest;
 import com.example.travelManager.domain.request.tour.TourItineraryRequest;
 import com.example.travelManager.domain.request.tour.TourRequest;
+import com.example.travelManager.domain.response.tour.TourBookingResponse;
 import com.example.travelManager.domain.response.tour.TourDetailResponse;
 import com.example.travelManager.domain.response.tour.TourDepartureResponse;
 import com.example.travelManager.domain.response.tour.TourImageResponse;
@@ -33,6 +42,7 @@ import com.example.travelManager.domain.response.tour.TourResponse;
 import com.example.travelManager.exception.ResourceNotFoundException;
 import com.example.travelManager.repository.UserRepository;
 import com.example.travelManager.repository.tour.TourDepartureRepository;
+import com.example.travelManager.repository.tour.TourFavoriteRepository;
 import com.example.travelManager.repository.tour.TourItineraryRepository;
 import com.example.travelManager.repository.tour.TourReviewRepository;
 import com.example.travelManager.service.tour.ITourService;
@@ -43,6 +53,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/tours")
+@SuppressWarnings("unchecked")
 @RequiredArgsConstructor
 public class TourController {
 
@@ -52,6 +63,8 @@ public class TourController {
     private final TourItineraryRepository itineraryRepository;
     private final UserRepository userRepository;
     private final com.example.travelManager.repository.tour.TourImageRepository imageRepository;
+    private final TourFavoriteRepository favoriteRepository;
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     // ── Tour CRUD ────────────────────────────────────────────────
 
@@ -206,6 +219,76 @@ public class TourController {
         return ResponseEntity.noContent().build();
     }
 
+    // ── Booking ──────────────────────────────────────────────────
+
+    @PostMapping("/{tourId}/book")
+    public ResponseEntity<TourBookingResponse> bookTour(
+            @PathVariable("tourId") Long tourId,
+            @Valid @RequestBody TourBookingRequest request) {
+        String email = SecurityUtil.getCurrentUserLogin()
+                .orElseThrow(() -> new RuntimeException("Not authenticated"));
+        TourBookingResponse response = tourService.bookTour(tourId, request, email);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @GetMapping("/my-bookings")
+    public ResponseEntity<List<TourBookingResponse>> getMyBookings() {
+        String email = SecurityUtil.getCurrentUserLogin()
+                .orElseThrow(() -> new RuntimeException("Not authenticated"));
+        return ResponseEntity.ok(tourService.getMyBookings(email));
+    }
+
+    @GetMapping("/bookings")
+    public ResponseEntity<List<TourBookingResponse>> getAllBookings() {
+        return ResponseEntity.ok(tourService.getAllBookings());
+    }
+
+    // ── Favorites ────────────────────────────────────────────────
+
+    @PostMapping("/{tourId}/favorite")
+    public ResponseEntity<Map<String, Object>> toggleFavorite(@PathVariable("tourId") Long tourId) {
+        String email = SecurityUtil.getCurrentUserLogin()
+                .orElseThrow(() -> new RuntimeException("Not authenticated"));
+        com.example.travelManager.domain.UserEntity user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        Tour tour = tourService.getTourById(tourId);
+        Optional<TourFavorite> existing = favoriteRepository.findByUserIdAndTourId(user.getId(), tourId);
+        boolean favorited;
+        if (existing.isPresent()) {
+            favoriteRepository.delete(existing.get());
+            favorited = false;
+        } else {
+            TourFavorite fav = new TourFavorite();
+            fav.setUser(user);
+            fav.setTour(tour);
+            favoriteRepository.save(fav);
+            favorited = true;
+        }
+        return ResponseEntity.ok(Map.of("favorited", favorited));
+    }
+
+    @GetMapping("/{tourId}/favorite")
+    public ResponseEntity<Map<String, Object>> checkFavorite(@PathVariable("tourId") Long tourId) {
+        String email = SecurityUtil.getCurrentUserLogin().orElse(null);
+        if (email == null) return ResponseEntity.ok(Map.of("favorited", false));
+        com.example.travelManager.domain.UserEntity user = userRepository.findByEmail(email).orElse(null);
+        if (user == null) return ResponseEntity.ok(Map.of("favorited", false));
+        boolean favorited = favoriteRepository.existsByUserIdAndTourId(user.getId(), tourId);
+        return ResponseEntity.ok(Map.of("favorited", favorited));
+    }
+
+    @GetMapping("/my-favorites")
+    public ResponseEntity<List<TourResponse>> getMyFavorites() {
+        String email = SecurityUtil.getCurrentUserLogin().orElse(null);
+        if (email == null) return ResponseEntity.ok(java.util.List.of());
+        com.example.travelManager.domain.UserEntity user = userRepository.findByEmail(email)
+                .orElse(null);
+        if (user == null) return ResponseEntity.ok(java.util.List.of());
+        List<Long> tourIds = favoriteRepository.findByUserId(user.getId())
+                .stream().map(f -> f.getTour().getId()).toList();
+        return ResponseEntity.ok(tourIds.stream().map(id -> toListResponse(tourService.getTourById(id))).toList());
+    }
+
     // ── Helpers ──────────────────────────────────────────────────
 
     private TourResponse toResponse(Tour tour) {
@@ -273,7 +356,9 @@ public class TourController {
         res.setPriceAdult(tour.getPriceAdult());
         res.setPriceChild(tour.getPriceChild());
         res.setDurationDays(tour.getDurationDays());
+        res.setDurationNights(tour.getDurationNights());
         res.setMaxSlots(tour.getMaxSlots());
+        res.setPackageDiscountPercent(tour.getPackageDiscountPercent());
         res.setStatus(tour.getStatus());
         res.setCancellationPolicy(tour.getCancellationPolicy());
         res.setIncludedServices(tour.getIncludedServices());
@@ -281,6 +366,24 @@ public class TourController {
         res.setImages(tour.getImages().stream().map(this::toImageResponse).toList());
         res.setItineraries(tour.getItineraries().stream().map(this::toItineraryResponse).toList());
         res.setDepartures(tour.getDepartures().stream().map(this::toDepartureResponse).toList());
+        try {
+            if (tour.getLinkedHotels() != null && !tour.getLinkedHotels().isBlank()
+                    && !tour.getLinkedHotels().equals("[]")) {
+                res.setLinkedHotels(MAPPER.readValue(tour.getLinkedHotels(), new TypeReference<List<Integer>>() {}));
+            }
+        } catch (Exception ignored) {}
+        try {
+            if (tour.getLinkedRestaurants() != null && !tour.getLinkedRestaurants().isBlank()
+                    && !tour.getLinkedRestaurants().equals("[]")) {
+                res.setLinkedRestaurants(MAPPER.readValue(tour.getLinkedRestaurants(), new TypeReference<List<Integer>>() {}));
+            }
+        } catch (Exception ignored) {}
+        try {
+            if (tour.getLinkedDestinations() != null && !tour.getLinkedDestinations().isBlank()
+                    && !tour.getLinkedDestinations().equals("[]")) {
+                res.setLinkedDestinations(MAPPER.readValue(tour.getLinkedDestinations(), new TypeReference<List<Integer>>() {}));
+            }
+        } catch (Exception ignored) {}
         return res;
     }
 

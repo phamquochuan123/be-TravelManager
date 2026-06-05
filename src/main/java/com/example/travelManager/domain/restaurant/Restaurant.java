@@ -1,5 +1,7 @@
 package com.example.travelManager.domain.restaurant;
 
+import java.math.BigDecimal;
+
 import com.example.travelManager.util.constant.restaurant.CuisineType;
 import com.example.travelManager.util.constant.restaurant.PriceRange;
 import jakarta.persistence.*;
@@ -30,7 +32,6 @@ public class Restaurant {
 
     private String address;
 
-    @Column(nullable = false)
     private String city;
 
     @Enumerated(EnumType.STRING)
@@ -51,6 +52,8 @@ public class Restaurant {
 
     @Lob
     private Blob photo;
+
+    private BigDecimal pricePerPerson;
 
     private Double averageRating;
 

@@ -2,13 +2,9 @@ package com.example.travelManager.service.hotel;
 
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.sql.Blob;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
-
-import javax.sql.rowset.serial.SerialBlob;
-import javax.sql.rowset.serial.SerialException;
 
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -32,18 +28,14 @@ public class RoomService implements IRoomService {
 
     @Override
     public Room addNewRoom(MultipartFile file, String roomType, BigDecimal roomPrice)
-            throws IOException, SerialException, SQLException {
+            throws IOException, SQLException {
         Room room = new Room();
         room.setRoomPrice(roomPrice);
         room.setRoomType(roomType);
         if (!file.isEmpty()) {
-            byte[] photoBytes = file.getBytes();
-            Blob photoBlob = new SerialBlob(photoBytes);
-            room.setPhoto(photoBlob);
+            room.setPhoto(file.getBytes());
         }
-
         return roomRepository.save(room);
-
     }
 
     @Override
@@ -62,11 +54,7 @@ public class RoomService implements IRoomService {
         if (theRoom.isEmpty()) {
             throw new ResourceNotFoundException("Sorry, Room not found!");
         }
-        Blob photoBlob = theRoom.get().getPhoto();
-        if (photoBlob != null) {
-            return photoBlob.getBytes(1, (int) photoBlob.length());
-        }
-        return null;
+        return theRoom.get().getPhoto();
     }
 
     @Override
@@ -88,11 +76,7 @@ public class RoomService implements IRoomService {
         if (roomPrice != null)
             room.setRoomPrice(roomPrice);
         if (photoBytes != null && photoBytes.length > 0) {
-            try {
-                room.setPhoto(new SerialBlob(photoBytes));
-            } catch (SQLException e) {
-                throw new InternalServerException("Error updating room ");
-            }
+            room.setPhoto(photoBytes);
         }
 
         return roomRepository.save(room);
@@ -124,7 +108,7 @@ public class RoomService implements IRoomService {
         room.setArea(request.getArea());
         room.setDescription(request.getDescription());
         if (photo != null && !photo.isEmpty()) {
-            room.setPhoto(new SerialBlob(photo.getBytes()));
+            room.setPhoto(photo.getBytes());
         }
         return roomRepository.save(room);
     }
@@ -145,7 +129,7 @@ public class RoomService implements IRoomService {
         if (request.getArea() != null) room.setArea(request.getArea());
         if (request.getDescription() != null) room.setDescription(request.getDescription());
         if (photo != null && !photo.isEmpty()) {
-            room.setPhoto(new SerialBlob(photo.getBytes()));
+            room.setPhoto(photo.getBytes());
         }
         return roomRepository.save(room);
     }

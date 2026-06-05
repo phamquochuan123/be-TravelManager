@@ -20,7 +20,9 @@ public class TourDetailResponse {
     private BigDecimal priceAdult;
     private BigDecimal priceChild;
     private int durationDays;
+    private int durationNights;
     private int maxSlots;
+    private Double packageDiscountPercent;
     private TourStatus status;
     private String cancellationPolicy;
     private String includedServices;
@@ -28,4 +30,7 @@ public class TourDetailResponse {
     private List<TourImageResponse> images;
     private List<TourItineraryResponse> itineraries;
     private List<TourDepartureResponse> departures;
+    private List<Integer> linkedHotels;
+    private List<Integer> linkedRestaurants;
+    private List<Integer> linkedDestinations;
 }

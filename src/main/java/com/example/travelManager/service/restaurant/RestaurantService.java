@@ -91,5 +91,6 @@ public class RestaurantService implements IRestaurantService {
         r.setCapacity(req.getCapacity());
         r.setOpeningHours(req.getOpeningHours());
         r.setAmenities(req.getAmenities());
+        if (req.getPricePerPerson() != null) r.setPricePerPerson(req.getPricePerPerson());
     }
 }

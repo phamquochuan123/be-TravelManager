@@ -53,11 +53,16 @@ public class Tour {
     private int durationNights; // so dem
     private int maxSlots;       // suc chua toi da
 
+    private Double packageDiscountPercent; // % giam gia khi dat theo tour package
+
     @Column(columnDefinition = "TEXT")
     private String linkedHotels;      // JSON array of linked hotel IDs
 
     @Column(columnDefinition = "TEXT")
     private String linkedRestaurants; // JSON array of linked restaurant IDs
+
+    @Column(columnDefinition = "TEXT")
+    private String linkedDestinations; // JSON array of linked destination IDs
 
     @Enumerated(EnumType.STRING)
     private TourType tourType; // DOMESTIC / INTERNATIONAL

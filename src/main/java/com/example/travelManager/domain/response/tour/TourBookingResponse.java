@@ -20,9 +20,28 @@ public class TourBookingResponse {
     private String contactName;
     private String contactPhone;
     private String contactEmail;
+
+    // Price breakdown
     private BigDecimal originalPrice;
+    private BigDecimal packageHotelPrice;
+    private BigDecimal packageRestaurantPrice;
     private BigDecimal discountAmount;
     private BigDecimal finalPrice;
+    private Double packageDiscountPercent;
+
+    // Hotel info (nullable)
+    private Long bookedRoomId;
+    private Long hotelId;
+    private String hotelName;
+    private String roomType;
+    private LocalDate checkInDate;
+    private LocalDate checkOutDate;
+
+    // Restaurant info (nullable)
+    private Long restaurantBookingId;
+    private Long restaurantId;
+    private String restaurantName;
+
     private BookingStatus status;
     private String note;
     private Instant createdAt;

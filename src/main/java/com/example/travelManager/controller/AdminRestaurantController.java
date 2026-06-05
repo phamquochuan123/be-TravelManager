@@ -55,6 +55,7 @@ public class AdminRestaurantController {
     public ResponseEntity<RestaurantItem> create(
             @RequestParam(name = "name") String name,
             @RequestParam(name = "address", required = false, defaultValue = "") String address,
+            @RequestParam(name = "city", required = false, defaultValue = "") String city,
             @RequestParam(name = "cuisineType", required = false, defaultValue = "") String cuisineType,
             @RequestParam(name = "openTime", required = false, defaultValue = "08:00") String openTime,
             @RequestParam(name = "closeTime", required = false, defaultValue = "22:00") String closeTime,
@@ -65,6 +66,7 @@ public class AdminRestaurantController {
         Restaurant restaurant = new Restaurant();
         restaurant.setName(name);
         restaurant.setAddress(address);
+        restaurant.setCity(city.isBlank() ? null : city);
         restaurant.setDescription(description);
         restaurant.setOpeningHours(openTime + "-" + closeTime);
         restaurant.setCapacity(maxTables);
@@ -87,6 +89,7 @@ public class AdminRestaurantController {
             @PathVariable("id") Long id,
             @RequestParam(name = "name") String name,
             @RequestParam(name = "address", required = false, defaultValue = "") String address,
+            @RequestParam(name = "city", required = false, defaultValue = "") String city,
             @RequestParam(name = "cuisineType", required = false, defaultValue = "") String cuisineType,
             @RequestParam(name = "openTime", required = false, defaultValue = "08:00") String openTime,
             @RequestParam(name = "closeTime", required = false, defaultValue = "22:00") String closeTime,
@@ -98,6 +101,7 @@ public class AdminRestaurantController {
                 .orElseThrow(() -> new ResourceNotFoundException("Restaurant not found: " + id));
         restaurant.setName(name);
         restaurant.setAddress(address);
+        restaurant.setCity(city.isBlank() ? null : city);
         restaurant.setDescription(description);
         restaurant.setOpeningHours(openTime + "-" + closeTime);
         restaurant.setCapacity(maxTables);
