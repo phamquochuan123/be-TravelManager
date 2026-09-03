@@ -5,6 +5,8 @@ import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -54,9 +56,13 @@ public class RoomController {
     @GetMapping("/rooms")
     public ResponseEntity<List<RoomResponse>> getAllRooms() throws SQLException {
         List<Room> rooms = roomService.getAllRooms();
+        Map<Long, List<BookedRoom>> bookingsByRoomId = bookingService
+                .getAllBookingsByRoomIds(rooms.stream().map(Room::getId).toList())
+                .stream()
+                .collect(Collectors.groupingBy(b -> b.getRoom().getId()));
         List<RoomResponse> responses = new ArrayList<>();
         for (Room room : rooms) {
-            responses.add(getRoomResponse(room));
+            responses.add(getRoomResponse(room, bookingsByRoomId.getOrDefault(room.getId(), List.of())));
         }
         return ResponseEntity.ok(responses);
     }
@@ -88,12 +94,18 @@ public class RoomController {
     }
 
     private RoomResponse getRoomResponse(Room room) {
-        List<BookedRoom> bookings = bookingService.getAllBookingsByRoomId(room.getId());
+        return getRoomResponse(room, bookingService.getAllBookingsByRoomId(room.getId()));
+    }
+
+    private RoomResponse getRoomResponse(Room room, List<BookedRoom> bookings) {
+        // GET /rooms và GET /rooms/{id} là endpoint PUBLIC (SecurityConfig permitAll).
+        // Chỉ trả khoảng ngày đã kín để FE vẽ lịch trống — KHÔNG trả bookingConfirmationCode,
+        // vì mã đó tra được /bookings/confirmation/{code} (cũng public) để lấy tên + email khách.
         List<BookingResponse> bookingInfo = bookings.stream()
                 .map(booking -> new BookingResponse(booking.getBookingId(),
                         booking.getCheckInDate(),
                         booking.getCheckOutDate(),
-                        booking.getBookingConfirmationCode()))
+                        null))
                 .toList();
         Long hotelId = room.getHotel() != null ? room.getHotel().getId() : null;
         String hotelName = room.getHotel() != null ? room.getHotel().getName() : null;

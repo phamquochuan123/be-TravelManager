@@ -11,6 +11,9 @@ public class DestinationResponse {
     private DestinationType destinationType;
     private String province;
     private String city;
+    private String address;
+    private Double latitude;
+    private Double longitude;
     private boolean isActive;
     private byte[] photo;
 }

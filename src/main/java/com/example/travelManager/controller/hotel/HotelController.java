@@ -1,7 +1,6 @@
 package com.example.travelManager.controller.hotel;
 
 import com.example.travelManager.domain.hotel.Hotel;
-import com.example.travelManager.domain.hotel.HotelFavorite;
 import com.example.travelManager.domain.hotel.Room;
 import com.example.travelManager.domain.request.hotel.HotelRequest;
 import com.example.travelManager.domain.request.hotel.RoomCreateRequest;
@@ -9,7 +8,7 @@ import com.example.travelManager.domain.response.hotel.HotelResponse;
 import com.example.travelManager.domain.response.hotel.RoomResponse;
 import com.example.travelManager.exception.ResourceNotFoundException;
 import com.example.travelManager.repository.UserRepository;
-import com.example.travelManager.repository.hotel.HotelFavoriteRepository;
+import com.example.travelManager.service.hotel.HotelFavoriteService;
 import com.example.travelManager.service.hotel.IHotelService;
 import com.example.travelManager.service.hotel.IRoomService;
 import com.example.travelManager.util.SecurityUtil;
@@ -27,7 +26,6 @@ import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/hotels")
@@ -36,7 +34,7 @@ public class HotelController {
 
     private final IHotelService hotelService;
     private final IRoomService roomService;
-    private final HotelFavoriteRepository favoriteRepository;
+    private final HotelFavoriteService favoriteService;
     private final UserRepository userRepository;
 
     // ── Hotel CRUD ──────────────────────────────────────────────
@@ -73,7 +71,9 @@ public class HotelController {
                         .collect(java.util.stream.Collectors.toList());
             }
         }
-        return ResponseEntity.ok(hotels.stream().map(this::toResponse).toList());
+        Map<Long, Long> roomCounts = roomService.countRoomsByHotelIds(
+                hotels.stream().map(Hotel::getId).toList());
+        return ResponseEntity.ok(hotels.stream().map(h -> toResponse(h, roomCounts)).toList());
     }
 
     @GetMapping("/{hotelId}")
@@ -180,23 +180,11 @@ public class HotelController {
 
     @PostMapping("/{hotelId}/favorite")
     public ResponseEntity<Map<String, Object>> toggleFavorite(@PathVariable("hotelId") Long hotelId) {
-        String email = SecurityUtil.getCurrentUserLogin()
-                .orElseThrow(() -> new RuntimeException("Not authenticated"));
+        String email = SecurityUtil.getCurrentUserLoginOrThrow();
         com.example.travelManager.domain.UserEntity user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         Hotel hotel = hotelService.getHotelById(hotelId);
-        Optional<HotelFavorite> existing = favoriteRepository.findByUserIdAndHotelId(user.getId(), hotelId);
-        boolean favorited;
-        if (existing.isPresent()) {
-            favoriteRepository.delete(existing.get());
-            favorited = false;
-        } else {
-            HotelFavorite fav = new HotelFavorite();
-            fav.setUser(user);
-            fav.setHotel(hotel);
-            favoriteRepository.save(fav);
-            favorited = true;
-        }
+        boolean favorited = favoriteService.toggle(user, hotel);
         return ResponseEntity.ok(Map.of("favorited", favorited));
     }
 
@@ -206,7 +194,7 @@ public class HotelController {
         if (email == null) return ResponseEntity.ok(Map.of("favorited", false));
         com.example.travelManager.domain.UserEntity user = userRepository.findByEmail(email).orElse(null);
         if (user == null) return ResponseEntity.ok(Map.of("favorited", false));
-        boolean favorited = favoriteRepository.existsByUserIdAndHotelId(user.getId(), hotelId);
+        boolean favorited = favoriteService.isFavorited(user.getId(), hotelId);
         return ResponseEntity.ok(Map.of("favorited", favorited));
     }
 
@@ -217,8 +205,7 @@ public class HotelController {
         com.example.travelManager.domain.UserEntity user = userRepository.findByEmail(email)
                 .orElse(null);
         if (user == null) return ResponseEntity.ok(java.util.List.of());
-        List<Long> hotelIds = favoriteRepository.findByUserId(user.getId())
-                .stream().map(f -> f.getHotel().getId()).toList();
+        List<Long> hotelIds = favoriteService.getFavoriteHotelIds(user.getId());
         return ResponseEntity.ok(hotelIds.stream()
                 .map(id -> toResponse(hotelService.getHotelById(id))).toList());
     }
@@ -226,6 +213,10 @@ public class HotelController {
     // ── Helpers ──────────────────────────────────────────────────
 
     private HotelResponse toResponse(Hotel hotel) {
+        return toResponse(hotel, null);
+    }
+
+    private HotelResponse toResponse(Hotel hotel, Map<Long, Long> roomCounts) {
         byte[] photoBytes = null;
         if (hotel.getPhoto() != null) {
             try { photoBytes = hotel.getPhoto().getBytes(1, (int) hotel.getPhoto().length()); }
@@ -241,7 +232,10 @@ public class HotelController {
         res.setHotelType(hotel.getHotelType());
         res.setAmenities(hotel.getAmenities());
         res.setActive(hotel.isActive());
-        res.setTotalRooms((int) roomService.countRoomsByHotelId(hotel.getId()));
+        long totalRooms = roomCounts != null
+                ? roomCounts.getOrDefault(hotel.getId(), 0L)
+                : roomService.countRoomsByHotelId(hotel.getId());
+        res.setTotalRooms((int) totalRooms);
         res.setPhoto(photoBytes);
         return res;
     }

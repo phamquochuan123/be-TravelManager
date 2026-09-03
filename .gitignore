@@ -36,3 +36,8 @@ out/
 
 ### VS Code ###
 .vscode/
+
+# Rác sinh ra khi chạy local
+*.log
+hs_err_pid*.log
+cookies.txt

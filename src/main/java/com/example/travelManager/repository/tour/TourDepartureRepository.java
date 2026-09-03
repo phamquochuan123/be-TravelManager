@@ -26,6 +26,9 @@ public interface TourDepartureRepository extends JpaRepository<TourDeparture, Lo
 
     List<TourDeparture> findByTourIdOrderByDepartureDateAsc(Long tourId);
 
+    @Query("SELECT d.tour.id, COUNT(d) FROM TourDeparture d WHERE d.tour.id IN :tourIds GROUP BY d.tour.id")
+    List<Object[]> countGroupedByTourIds(@Param("tourIds") List<Long> tourIds);
+
     @Modifying
     @Query("UPDATE TourDeparture d SET d.availableSlots = d.availableSlots - :needed " +
            "WHERE d.id = :id AND d.availableSlots >= :needed")

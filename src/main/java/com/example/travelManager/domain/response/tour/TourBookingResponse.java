@@ -13,6 +13,7 @@ public class TourBookingResponse {
     private Long tourId;
     private String tourName;
     private String tourDestination;
+    private String tourImage;
     private Long departureId;
     private LocalDate departureDate;
     private int numAdults;

@@ -6,11 +6,14 @@ import com.example.travelManager.util.constant.hotel.HotelBookingStatus;
 import com.example.travelManager.util.constant.hotel.RoomStatus;
 import com.example.travelManager.domain.request.hotel.BookingRequest;
 import com.example.travelManager.exception.ResourceNotFoundException;
+import com.example.travelManager.repository.UserRepository;
 import com.example.travelManager.repository.hotel.BookedRoomRepository;
 import com.example.travelManager.repository.hotel.RoomRepository;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -20,10 +23,12 @@ public class BookedRoomServiceImpl implements IBookedRoomService {
 
     private final BookedRoomRepository bookedRoomRepository;
     private final RoomRepository roomRepository;
+    private final UserRepository userRepository;
 
     @Override
-    public String bookRoom(Long hotelId, Long roomId, BookingRequest request) {
-        Room room = roomRepository.findById(roomId)
+    @Transactional
+    public String bookRoom(Long hotelId, Long roomId, BookingRequest request, String currentUserEmail) {
+        Room room = roomRepository.findByIdForUpdate(roomId)
                 .orElseThrow(() -> new ResourceNotFoundException("Room not found with id: " + roomId));
 
         if (room.getHotel() == null || !room.getHotel().getId().equals(hotelId)) {
@@ -53,17 +58,35 @@ public class BookedRoomServiceImpl implements IBookedRoomService {
         }
 
         BookedRoom booking = new BookedRoom();
+        // Chủ sở hữu thật = người đang đăng nhập. guestEmail bên dưới do client tự khai
+        // (có thể là email người thân khi đặt hộ) nên KHÔNG dùng để xét quyền.
+        if (currentUserEmail != null && !currentUserEmail.isBlank()) {
+            userRepository.findByEmail(currentUserEmail).ifPresent(booking::setUser);
+        }
         booking.setCheckInDate(request.getCheckInDate());
         booking.setCheckOutDate(request.getCheckOutDate());
         booking.setGuestFullName(request.getGuestFullName());
         booking.setGuestEmail(request.getGuestEmail());
         booking.setNumOfAdults(request.getNumOfAdults());
         booking.setNumOfChildren(request.getNumOfChildren());
+        booking.setTotalPrice(calculateTotalPrice(room, request.getCheckInDate(), request.getCheckOutDate()));
 
         room.addBooking(booking);
         roomRepository.save(room);
 
         return booking.getBookingConfirmationCode();
+    }
+
+    /**
+     * Chốt giá tại thời điểm đặt: giá phòng × số đêm (tối thiểu 1 đêm).
+     * Dùng chung với nhánh fallback ở PaymentController cho booking cũ chưa có total_price.
+     */
+    public static java.math.BigDecimal calculateTotalPrice(Room room, LocalDate checkIn, LocalDate checkOut) {
+        if (room == null || room.getRoomPrice() == null || checkIn == null || checkOut == null) {
+            return null;
+        }
+        long nights = Math.max(1, java.time.temporal.ChronoUnit.DAYS.between(checkIn, checkOut));
+        return room.getRoomPrice().multiply(java.math.BigDecimal.valueOf(nights));
     }
 
     @Override
@@ -83,6 +106,11 @@ public class BookedRoomServiceImpl implements IBookedRoomService {
     }
 
     @Override
+    public List<BookedRoom> getAllBookingsByRoomIds(List<Long> roomIds) {
+        return bookedRoomRepository.findByRoom_IdIn(roomIds);
+    }
+
+    @Override
     public List<BookedRoom> getAllBookingsByHotelId(Long hotelId) {
         return bookedRoomRepository.findByRoom_Hotel_Id(hotelId);
     }
@@ -93,6 +121,7 @@ public class BookedRoomServiceImpl implements IBookedRoomService {
     }
 
     @Override
+    @Transactional
     public void cancelBooking(Long bookingId) {
         BookedRoom booking = bookedRoomRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + bookingId));

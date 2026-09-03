@@ -23,6 +23,7 @@ public class BookingResponse {
     private RoomResponse room;
     private Long hotelId;
     private String hotelName;
+    private String hotelPhoto;
     private String roomType;
     private String status;
 

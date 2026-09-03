@@ -102,6 +102,9 @@ public class DestinationController {
         res.setDestinationType(d.getDestinationType());
         res.setProvince(d.getProvince());
         res.setCity(d.getCity());
+        res.setAddress(d.getAddress());
+        res.setLatitude(d.getLatitude());
+        res.setLongitude(d.getLongitude());
         res.setActive(d.isActive());
         res.setPhoto(photoBytes);
         return res;

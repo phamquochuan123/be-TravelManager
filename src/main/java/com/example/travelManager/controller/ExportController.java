@@ -14,7 +14,7 @@ import com.itextpdf.layout.element.Table;
 import com.itextpdf.layout.properties.TextAlignment;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -25,6 +25,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 
 @RestController
@@ -38,13 +41,15 @@ public class ExportController {
     // ── Excel ─────────────────────────────────────────────────────
 
     @GetMapping("/excel/tour-bookings")
-    public ResponseEntity<byte[]> exportTourBookingsExcel() throws Exception {
-        List<TourBooking> bookings = tourBookingRepository.findAllByOrderByCreatedAtDesc();
+    public ResponseEntity<byte[]> exportTourBookingsExcel(
+            @RequestParam(name = "from", required = false) LocalDate from,
+            @RequestParam(name = "to", required = false) LocalDate to) throws Exception {
+        List<TourBooking> bookings = resolveTourBookings(from, to);
 
-        try (XSSFWorkbook workbook = new XSSFWorkbook()) {
+        SXSSFWorkbook workbook = new SXSSFWorkbook(200);
+        try {
             Sheet sheet = workbook.createSheet("Tour Bookings");
 
-            // Header style
             CellStyle headerStyle = workbook.createCellStyle();
             Font font = workbook.createFont();
             font.setBold(true);
@@ -79,22 +84,26 @@ public class ExportController {
                 row.createCell(12).setCellValue(b.getCreatedAt() != null ? b.getCreatedAt().toString() : "");
             }
 
-            for (int i = 0; i < headers.length; i++) sheet.autoSizeColumn(i);
-
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             workbook.write(out);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=tour-bookings.xlsx")
                     .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                     .body(out.toByteArray());
+        } finally {
+            workbook.dispose();
+            workbook.close();
         }
     }
 
     @GetMapping("/excel/restaurant-bookings")
-    public ResponseEntity<byte[]> exportRestaurantBookingsExcel() throws Exception {
-        List<RestaurantBooking> bookings = restaurantBookingRepository.findAllByOrderByCreatedAtDesc();
+    public ResponseEntity<byte[]> exportRestaurantBookingsExcel(
+            @RequestParam(name = "from", required = false) LocalDate from,
+            @RequestParam(name = "to", required = false) LocalDate to) throws Exception {
+        List<RestaurantBooking> bookings = resolveRestaurantBookings(from, to);
 
-        try (XSSFWorkbook workbook = new XSSFWorkbook()) {
+        SXSSFWorkbook workbook = new SXSSFWorkbook(200);
+        try {
             Sheet sheet = workbook.createSheet("Restaurant Bookings");
 
             CellStyle headerStyle = workbook.createCellStyle();
@@ -128,66 +137,69 @@ public class ExportController {
                 row.createCell(9).setCellValue(b.getConfirmationCode());
             }
 
-            for (int i = 0; i < headers.length; i++) sheet.autoSizeColumn(i);
-
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             workbook.write(out);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=restaurant-bookings.xlsx")
                     .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                     .body(out.toByteArray());
+        } finally {
+            workbook.dispose();
+            workbook.close();
         }
     }
 
     // ── PDF ───────────────────────────────────────────────────────
 
     @GetMapping("/pdf/tour-bookings")
-    public ResponseEntity<byte[]> exportTourBookingsPdf() throws Exception {
-        List<TourBooking> bookings = tourBookingRepository.findAllByOrderByCreatedAtDesc();
+    public ResponseEntity<byte[]> exportTourBookingsPdf(
+            @RequestParam(name = "from", required = false) LocalDate from,
+            @RequestParam(name = "to", required = false) LocalDate to) throws Exception {
+        List<TourBooking> bookings = resolveTourBookings(from, to);
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        PdfWriter writer = new PdfWriter(out);
-        PdfDocument pdfDoc = new PdfDocument(writer);
-        Document document = new Document(pdfDoc);
+        try (PdfWriter writer = new PdfWriter(out);
+             PdfDocument pdfDoc = new PdfDocument(writer);
+             Document document = new Document(pdfDoc)) {
 
-        document.add(new Paragraph("BÁO CÁO ĐẶT TOUR")
-                .setTextAlignment(TextAlignment.CENTER)
-                .setBold()
-                .setFontSize(16));
-        document.add(new Paragraph("Tổng: " + bookings.size() + " đơn hàng")
-                .setTextAlignment(TextAlignment.CENTER)
-                .setFontSize(11));
-        document.add(new Paragraph(" "));
+            document.add(new Paragraph("BÁO CÁO ĐẶT TOUR")
+                    .setTextAlignment(TextAlignment.CENTER)
+                    .setBold()
+                    .setFontSize(16));
+            document.add(new Paragraph("Tổng: " + bookings.size() + " đơn hàng")
+                    .setTextAlignment(TextAlignment.CENTER)
+                    .setFontSize(11));
+            document.add(new Paragraph(" "));
 
-        float[] colWidths = {30f, 120f, 100f, 80f, 50f, 50f, 80f, 80f};
-        Table table = new Table(colWidths);
-        table.setWidth(com.itextpdf.layout.properties.UnitValue.createPercentValue(100));
+            float[] colWidths = {30f, 120f, 100f, 80f, 50f, 50f, 80f, 80f};
+            Table table = new Table(colWidths);
+            table.setWidth(com.itextpdf.layout.properties.UnitValue.createPercentValue(100));
 
-        String[] headers = {"ID", "Tour", "Tên liên hệ", "Email", "NL", "TE", "Thành tiền", "Trạng thái"};
-        for (String h : headers) {
-            table.addHeaderCell(new Cell().add(new Paragraph(h).setBold())
-                    .setBackgroundColor(ColorConstants.LIGHT_GRAY));
+            String[] headers = {"ID", "Tour", "Tên liên hệ", "Email", "NL", "TE", "Thành tiền", "Trạng thái"};
+            for (String h : headers) {
+                table.addHeaderCell(new Cell().add(new Paragraph(h).setBold())
+                        .setBackgroundColor(ColorConstants.LIGHT_GRAY));
+            }
+
+            BigDecimal totalRevenue = BigDecimal.ZERO;
+            for (TourBooking b : bookings) {
+                table.addCell(new Cell().add(new Paragraph(String.valueOf(b.getId()))));
+                table.addCell(new Cell().add(new Paragraph(b.getTour() != null ? b.getTour().getName() : "")));
+                table.addCell(new Cell().add(new Paragraph(b.getContactName() != null ? b.getContactName() : "")));
+                table.addCell(new Cell().add(new Paragraph(b.getContactEmail() != null ? b.getContactEmail() : "")));
+                table.addCell(new Cell().add(new Paragraph(String.valueOf(b.getNumAdults()))));
+                table.addCell(new Cell().add(new Paragraph(String.valueOf(b.getNumChildren()))));
+                String price = b.getFinalPrice() != null ? b.getFinalPrice().toPlainString() : "0";
+                table.addCell(new Cell().add(new Paragraph(price)));
+                table.addCell(new Cell().add(new Paragraph(b.getStatus() != null ? b.getStatus().name() : "")));
+                if (b.getFinalPrice() != null) totalRevenue = totalRevenue.add(b.getFinalPrice());
+            }
+
+            document.add(table);
+            document.add(new Paragraph(" "));
+            document.add(new Paragraph("Tổng doanh thu: " + totalRevenue.toPlainString() + " VNĐ")
+                    .setBold().setTextAlignment(TextAlignment.RIGHT));
         }
-
-        BigDecimal totalRevenue = BigDecimal.ZERO;
-        for (TourBooking b : bookings) {
-            table.addCell(new Cell().add(new Paragraph(String.valueOf(b.getId()))));
-            table.addCell(new Cell().add(new Paragraph(b.getTour() != null ? b.getTour().getName() : "")));
-            table.addCell(new Cell().add(new Paragraph(b.getContactName() != null ? b.getContactName() : "")));
-            table.addCell(new Cell().add(new Paragraph(b.getContactEmail() != null ? b.getContactEmail() : "")));
-            table.addCell(new Cell().add(new Paragraph(String.valueOf(b.getNumAdults()))));
-            table.addCell(new Cell().add(new Paragraph(String.valueOf(b.getNumChildren()))));
-            String price = b.getFinalPrice() != null ? b.getFinalPrice().toPlainString() : "0";
-            table.addCell(new Cell().add(new Paragraph(price)));
-            table.addCell(new Cell().add(new Paragraph(b.getStatus() != null ? b.getStatus().name() : "")));
-            if (b.getFinalPrice() != null) totalRevenue = totalRevenue.add(b.getFinalPrice());
-        }
-
-        document.add(table);
-        document.add(new Paragraph(" "));
-        document.add(new Paragraph("Tổng doanh thu: " + totalRevenue.toPlainString() + " VNĐ")
-                .setBold().setTextAlignment(TextAlignment.RIGHT));
-        document.close();
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=tour-bookings.pdf")
@@ -196,49 +208,81 @@ public class ExportController {
     }
 
     @GetMapping("/pdf/restaurant-bookings")
-    public ResponseEntity<byte[]> exportRestaurantBookingsPdf() throws Exception {
-        List<RestaurantBooking> bookings = restaurantBookingRepository.findAllByOrderByCreatedAtDesc();
+    public ResponseEntity<byte[]> exportRestaurantBookingsPdf(
+            @RequestParam(name = "from", required = false) LocalDate from,
+            @RequestParam(name = "to", required = false) LocalDate to) throws Exception {
+        List<RestaurantBooking> bookings = resolveRestaurantBookings(from, to);
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        PdfWriter writer = new PdfWriter(out);
-        PdfDocument pdfDoc = new PdfDocument(writer);
-        Document document = new Document(pdfDoc);
+        try (PdfWriter writer = new PdfWriter(out);
+             PdfDocument pdfDoc = new PdfDocument(writer);
+             Document document = new Document(pdfDoc)) {
 
-        document.add(new Paragraph("BÁO CÁO ĐẶT BÀN NHÀ HÀNG")
-                .setTextAlignment(TextAlignment.CENTER)
-                .setBold()
-                .setFontSize(16));
-        document.add(new Paragraph("Tổng: " + bookings.size() + " đơn đặt bàn")
-                .setTextAlignment(TextAlignment.CENTER)
-                .setFontSize(11));
-        document.add(new Paragraph(" "));
+            document.add(new Paragraph("BÁO CÁO ĐẶT BÀN NHÀ HÀNG")
+                    .setTextAlignment(TextAlignment.CENTER)
+                    .setBold()
+                    .setFontSize(16));
+            document.add(new Paragraph("Tổng: " + bookings.size() + " đơn đặt bàn")
+                    .setTextAlignment(TextAlignment.CENTER)
+                    .setFontSize(11));
+            document.add(new Paragraph(" "));
 
-        float[] colWidths = {30f, 120f, 100f, 70f, 60f, 60f, 80f};
-        Table table = new Table(colWidths);
-        table.setWidth(com.itextpdf.layout.properties.UnitValue.createPercentValue(100));
+            float[] colWidths = {30f, 120f, 100f, 70f, 60f, 60f, 80f};
+            Table table = new Table(colWidths);
+            table.setWidth(com.itextpdf.layout.properties.UnitValue.createPercentValue(100));
 
-        String[] headers = {"ID", "Nhà hàng", "Tên liên hệ", "Số khách", "Ngày đặt", "Giờ", "Trạng thái"};
-        for (String h : headers) {
-            table.addHeaderCell(new Cell().add(new Paragraph(h).setBold())
-                    .setBackgroundColor(ColorConstants.LIGHT_GRAY));
+            String[] headers = {"ID", "Nhà hàng", "Tên liên hệ", "Số khách", "Ngày đặt", "Giờ", "Trạng thái"};
+            for (String h : headers) {
+                table.addHeaderCell(new Cell().add(new Paragraph(h).setBold())
+                        .setBackgroundColor(ColorConstants.LIGHT_GRAY));
+            }
+
+            for (RestaurantBooking b : bookings) {
+                table.addCell(new Cell().add(new Paragraph(String.valueOf(b.getId()))));
+                table.addCell(new Cell().add(new Paragraph(b.getRestaurant() != null ? b.getRestaurant().getName() : "")));
+                table.addCell(new Cell().add(new Paragraph(b.getContactName() != null ? b.getContactName() : "")));
+                table.addCell(new Cell().add(new Paragraph(String.valueOf(b.getGuestCount()))));
+                table.addCell(new Cell().add(new Paragraph(b.getBookingDate() != null ? b.getBookingDate().toString() : "")));
+                table.addCell(new Cell().add(new Paragraph(b.getBookingTime() != null ? b.getBookingTime().toString() : "")));
+                table.addCell(new Cell().add(new Paragraph(b.getStatus() != null ? b.getStatus().name() : "")));
+            }
+
+            document.add(table);
         }
-
-        for (RestaurantBooking b : bookings) {
-            table.addCell(new Cell().add(new Paragraph(String.valueOf(b.getId()))));
-            table.addCell(new Cell().add(new Paragraph(b.getRestaurant() != null ? b.getRestaurant().getName() : "")));
-            table.addCell(new Cell().add(new Paragraph(b.getContactName() != null ? b.getContactName() : "")));
-            table.addCell(new Cell().add(new Paragraph(String.valueOf(b.getGuestCount()))));
-            table.addCell(new Cell().add(new Paragraph(b.getBookingDate() != null ? b.getBookingDate().toString() : "")));
-            table.addCell(new Cell().add(new Paragraph(b.getBookingTime() != null ? b.getBookingTime().toString() : "")));
-            table.addCell(new Cell().add(new Paragraph(b.getStatus() != null ? b.getStatus().name() : "")));
-        }
-
-        document.add(table);
-        document.close();
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=restaurant-bookings.pdf")
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(out.toByteArray());
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────
+
+    private List<TourBooking> resolveTourBookings(LocalDate from, LocalDate to) {
+        if (from == null && to == null) {
+            return tourBookingRepository.findAllByOrderByCreatedAtDesc();
+        }
+        return tourBookingRepository.findByCreatedAtBetweenOrderByCreatedAtDesc(
+                toStartOfDayInstant(from), toEndOfDayInstant(to));
+    }
+
+    private List<RestaurantBooking> resolveRestaurantBookings(LocalDate from, LocalDate to) {
+        if (from == null && to == null) {
+            return restaurantBookingRepository.findAllByOrderByCreatedAtDesc();
+        }
+        return restaurantBookingRepository.findByCreatedAtBetweenOrderByCreatedAtDesc(
+                toStartOfDayInstant(from), toEndOfDayInstant(to));
+    }
+
+    private Instant toStartOfDayInstant(LocalDate date) {
+        return date != null
+                ? date.atStartOfDay(ZoneId.systemDefault()).toInstant()
+                : Instant.EPOCH;
+    }
+
+    private Instant toEndOfDayInstant(LocalDate date) {
+        return date != null
+                ? date.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant()
+                : Instant.now();
     }
 }

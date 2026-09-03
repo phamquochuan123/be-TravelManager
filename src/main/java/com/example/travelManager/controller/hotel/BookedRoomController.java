@@ -1,19 +1,28 @@
 package com.example.travelManager.controller.hotel;
 
+import com.example.travelManager.domain.UserEntity;
 import com.example.travelManager.domain.hotel.BookedRoom;
 import com.example.travelManager.domain.hotel.Hotel;
 import com.example.travelManager.domain.request.hotel.BookingRequest;
 import com.example.travelManager.domain.response.hotel.BookingResponse;
 import com.example.travelManager.domain.tour.TourBooking;
+import com.example.travelManager.repository.UserRepository;
+import com.example.travelManager.repository.hotel.BookedRoomRepository;
 import com.example.travelManager.repository.hotel.HotelRepository;
 import com.example.travelManager.repository.tour.TourBookingRepository;
 import com.example.travelManager.service.EmailService;
 import com.example.travelManager.service.hotel.IBookedRoomService;
 import com.example.travelManager.util.SecurityUtil;
+import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.CurrentSecurityContext;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.web.bind.annotation.*;
@@ -21,6 +30,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
+@Slf4j
 @RestController
 @RequiredArgsConstructor
 public class BookedRoomController {
@@ -29,6 +39,8 @@ public class BookedRoomController {
     private final EmailService emailService;
     private final TourBookingRepository tourBookingRepository;
     private final HotelRepository hotelRepository;
+    private final BookedRoomRepository bookedRoomRepository;
+    private final UserRepository userRepository;
 
     @PostMapping("/hotels/{hotelId}/rooms/{roomId}/bookings")
     public ResponseEntity<BookingResponse> bookRoom(
@@ -58,7 +70,8 @@ public class BookedRoomController {
                 }
             }
         }
-        String confirmationCode = bookedRoomService.bookRoom(hotelId, roomId, request);
+        String confirmationCode = bookedRoomService.bookRoom(hotelId, roomId, request,
+                SecurityUtil.getCurrentUserLogin().orElse(null));
         BookedRoom booking = bookedRoomService.findByConfirmationCode(confirmationCode);
         try {
             Hotel hotel = booking.getRoom() != null ? booking.getRoom().getHotel() : null;
@@ -70,7 +83,10 @@ public class BookedRoomController {
                     request.getCheckInDate().toString(),
                     request.getCheckOutDate().toString(),
                     confirmationCode);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.warn("Gửi email xác nhận đặt phòng thất bại (confirmationCode={}): {}",
+                    confirmationCode, e.getMessage());
+        }
         BookingResponse res = new BookingResponse();
         res.setId(booking.getBookingId());
         res.setBookingConfirmationCode(confirmationCode);
@@ -94,6 +110,7 @@ public class BookedRoomController {
         return ResponseEntity.ok(toResponse(booking));
     }
 
+    @Transactional
     @GetMapping("/bookings/guest/{email}")
     public ResponseEntity<List<BookingResponse>> getByGuestEmail(
             @PathVariable("email") String email,
@@ -109,13 +126,18 @@ public class BookedRoomController {
                         .stream().map(this::toResponse).toList());
     }
 
+    @Transactional
     @GetMapping("/bookings/all")
-    public ResponseEntity<List<BookingResponse>> getAllBookings() {
+    public ResponseEntity<Page<BookingResponse>> getAllBookings(
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size) {
+        // Phân trang ở DB. Cách cũ trả toàn bộ bảng booking trong một response.
         return ResponseEntity.ok(
-                bookedRoomService.getAllBookings()
-                        .stream().map(this::toResponse).toList());
+                bookedRoomRepository.findAllForAdmin(PageRequest.of(page, size))
+                        .map(this::toResponse));
     }
 
+    @PreAuthorize("hasAnyRole('ADMIN','STAFF')")
     @GetMapping("/bookings/room/{roomId}")
     public ResponseEntity<List<BookingResponse>> getByRoomId(
             @PathVariable("roomId") Long roomId) {
@@ -126,8 +148,35 @@ public class BookedRoomController {
 
     @DeleteMapping("/bookings/{bookingId}")
     public ResponseEntity<Void> cancelBooking(@PathVariable("bookingId") Long bookingId) {
+        BookedRoom booking = bookedRoomRepository.findById(bookingId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Booking not found: " + bookingId));
+
+        String currentEmail = SecurityUtil.getCurrentUserLogin().orElseThrow();
+        UserEntity currentUser = userRepository.findByEmail(currentEmail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        boolean isPrivileged = currentUser.getRole() != null &&
+                ("ADMIN".equals(currentUser.getRole().getName()) ||
+                 "STAFF".equals(currentUser.getRole().getName()));
+        if (!isPrivileged && !isOwnedBy(booking, currentUser, currentEmail)) {
+            throw new AccessDeniedException("Không có quyền hủy booking này");
+        }
+
         bookedRoomService.cancelBooking(bookingId);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Booking thuộc về user hiện tại hay không.
+     * Ưu tiên cột user_id (chủ sở hữu thật). Chỉ fallback về guestEmail cho những
+     * booking cũ tạo trước khi có cột user_id — dữ liệu mới luôn có user.
+     */
+    private boolean isOwnedBy(BookedRoom booking, UserEntity currentUser, String currentEmail) {
+        if (booking.getUser() != null) {
+            return booking.getUser().getId() == currentUser.getId();
+        }
+        return booking.getGuestEmail() != null
+                && booking.getGuestEmail().equalsIgnoreCase(currentEmail);
     }
 
     private BookingResponse toResponse(BookedRoom b) {
@@ -144,6 +193,12 @@ public class BookedRoomController {
         res.setBookingConfirmationCode(b.getBookingConfirmationCode());
         res.setHotelId(hotel != null ? hotel.getId() : null);
         res.setHotelName(hotel != null ? hotel.getName() : null);
+        if (hotel != null && hotel.getPhoto() != null) {
+            try {
+                byte[] bytes = hotel.getPhoto().getBytes(1, (int) hotel.getPhoto().length());
+                res.setHotelPhoto(java.util.Base64.getEncoder().encodeToString(bytes));
+            } catch (java.sql.SQLException ignored) {}
+        }
         res.setRoomType(b.getRoom() != null ? b.getRoom().getRoomType() : null);
         res.setStatus(b.getStatus() != null ? b.getStatus().name() : "PENDING");
         return res;

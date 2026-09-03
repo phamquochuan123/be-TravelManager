@@ -66,6 +66,8 @@ public class AdminHotelController {
             @RequestParam(name = "name") String name,
             @RequestParam(name = "address", required = false, defaultValue = "") String address,
             @RequestParam(name = "city", required = false, defaultValue = "") String city,
+            @RequestParam(name = "latitude", required = false) Double latitude,
+            @RequestParam(name = "longitude", required = false) Double longitude,
             @RequestParam(name = "stars", defaultValue = "3") int stars,
             @RequestParam(name = "description", required = false, defaultValue = "") String description,
             @RequestParam(name = "amenities", required = false, defaultValue = "[]") String amenities,
@@ -77,6 +79,8 @@ public class AdminHotelController {
         hotel.setName(name);
         hotel.setAddress(address);
         hotel.setCity(city.isBlank() ? null : city);
+        hotel.setLatitude(latitude);
+        hotel.setLongitude(longitude);
         hotel.setStarRating(stars);
         hotel.setDescription(description);
         hotel.setAmenities(amenities);
@@ -97,6 +101,8 @@ public class AdminHotelController {
             @RequestParam(name = "name") String name,
             @RequestParam(name = "address", required = false, defaultValue = "") String address,
             @RequestParam(name = "city", required = false, defaultValue = "") String city,
+            @RequestParam(name = "latitude", required = false) Double latitude,
+            @RequestParam(name = "longitude", required = false) Double longitude,
             @RequestParam(name = "stars", defaultValue = "3") int stars,
             @RequestParam(name = "description", required = false, defaultValue = "") String description,
             @RequestParam(name = "amenities", required = false, defaultValue = "[]") String amenities,
@@ -109,6 +115,8 @@ public class AdminHotelController {
         hotel.setName(name);
         hotel.setAddress(address);
         hotel.setCity(city.isBlank() ? null : city);
+        if (latitude != null) hotel.setLatitude(latitude);
+        if (longitude != null) hotel.setLongitude(longitude);
         hotel.setStarRating(stars);
         hotel.setDescription(description);
         hotel.setAmenities(amenities);
@@ -166,6 +174,8 @@ public class AdminHotelController {
         item.setId(hotel.getId());
         item.setName(hotel.getName());
         item.setAddress(hotel.getAddress() != null ? hotel.getAddress() : "");
+        item.setLatitude(hotel.getLatitude());
+        item.setLongitude(hotel.getLongitude());
         item.setStars(hotel.getStarRating());
         item.setDescription(hotel.getDescription());
         item.setStatus(hotel.isActive() ? "ACTIVE" : "INACTIVE");
@@ -261,6 +271,8 @@ public class AdminHotelController {
         private long id;
         private String name;
         private String address;
+        private Double latitude;
+        private Double longitude;
         private int stars;
         private String description;
         private List<String> amenities;

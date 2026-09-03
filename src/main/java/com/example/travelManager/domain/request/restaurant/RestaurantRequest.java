@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 
 import com.example.travelManager.util.constant.restaurant.CuisineType;
 import com.example.travelManager.util.constant.restaurant.PriceRange;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
@@ -35,5 +36,6 @@ public class RestaurantRequest {
 
     private Boolean isActive;
 
+    @DecimalMin(value = "0", inclusive = false)
     private BigDecimal pricePerPerson;
 }

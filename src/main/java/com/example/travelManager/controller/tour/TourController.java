@@ -7,9 +7,9 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.Map;
-import java.util.Optional;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -26,7 +26,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.example.travelManager.domain.tour.Tour;
 import com.example.travelManager.domain.tour.TourDeparture;
-import com.example.travelManager.domain.tour.TourFavorite;
 import com.example.travelManager.domain.tour.TourImage;
 import com.example.travelManager.domain.tour.TourItinerary;
 import com.example.travelManager.domain.request.tour.TourBookingRequest;
@@ -42,10 +41,10 @@ import com.example.travelManager.domain.response.tour.TourResponse;
 import com.example.travelManager.exception.ResourceNotFoundException;
 import com.example.travelManager.repository.UserRepository;
 import com.example.travelManager.repository.tour.TourDepartureRepository;
-import com.example.travelManager.repository.tour.TourFavoriteRepository;
 import com.example.travelManager.repository.tour.TourItineraryRepository;
 import com.example.travelManager.repository.tour.TourReviewRepository;
 import com.example.travelManager.service.tour.ITourService;
+import com.example.travelManager.service.tour.TourFavoriteService;
 import com.example.travelManager.util.SecurityUtil;
 
 import jakarta.validation.Valid;
@@ -63,7 +62,7 @@ public class TourController {
     private final TourItineraryRepository itineraryRepository;
     private final UserRepository userRepository;
     private final com.example.travelManager.repository.tour.TourImageRepository imageRepository;
-    private final TourFavoriteRepository favoriteRepository;
+    private final TourFavoriteService favoriteService;
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     // ── Tour CRUD ────────────────────────────────────────────────
@@ -85,7 +84,23 @@ public class TourController {
                     .filter(t -> destination.equalsIgnoreCase(t.getDestination()))
                     .toList();
         }
-        return ResponseEntity.ok(tours.stream().map(this::toListResponse).toList());
+
+        List<Long> tourIds = tours.stream().map(Tour::getId).toList();
+
+        Map<Long, Double> avgRatingByTourId = reviewRepository.avgRatingGroupByTourIds(tourIds).stream()
+                .collect(java.util.stream.Collectors.toMap(row -> (Long) row[0], row -> (Double) row[1]));
+
+        Map<Long, Long> departureCountByTourId = departureRepository.countGroupedByTourIds(tourIds).stream()
+                .collect(java.util.stream.Collectors.toMap(row -> (Long) row[0], row -> (Long) row[1]));
+
+        Map<Long, String> firstImageByTourId = new java.util.HashMap<>();
+        for (TourImage img : imageRepository.findByTourIdInOrderByTourIdAscSortOrderAsc(tourIds)) {
+            firstImageByTourId.computeIfAbsent(img.getTour().getId(), id -> blobToBase64(img.getImageData()));
+        }
+
+        return ResponseEntity.ok(tours.stream()
+                .map(t -> toListResponse(t, avgRatingByTourId, departureCountByTourId, firstImageByTourId))
+                .toList());
     }
 
     @GetMapping("/{tourId}")
@@ -225,45 +240,35 @@ public class TourController {
     public ResponseEntity<TourBookingResponse> bookTour(
             @PathVariable("tourId") Long tourId,
             @Valid @RequestBody TourBookingRequest request) {
-        String email = SecurityUtil.getCurrentUserLogin()
-                .orElseThrow(() -> new RuntimeException("Not authenticated"));
+        String email = SecurityUtil.getCurrentUserLoginOrThrow();
         TourBookingResponse response = tourService.bookTour(tourId, request, email);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping("/my-bookings")
     public ResponseEntity<List<TourBookingResponse>> getMyBookings() {
-        String email = SecurityUtil.getCurrentUserLogin()
-                .orElseThrow(() -> new RuntimeException("Not authenticated"));
+        String email = SecurityUtil.getCurrentUserLoginOrThrow();
         return ResponseEntity.ok(tourService.getMyBookings(email));
     }
 
+    @PreAuthorize("hasAnyRole('ADMIN','STAFF')")
     @GetMapping("/bookings")
-    public ResponseEntity<List<TourBookingResponse>> getAllBookings() {
-        return ResponseEntity.ok(tourService.getAllBookings());
+    public ResponseEntity<org.springframework.data.domain.Page<TourBookingResponse>> getAllBookings(
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size) {
+        // Phân trang ở DB. Cách cũ trả toàn bộ bảng booking trong một response.
+        return ResponseEntity.ok(tourService.getAllBookings(page, size));
     }
 
     // ── Favorites ────────────────────────────────────────────────
 
     @PostMapping("/{tourId}/favorite")
     public ResponseEntity<Map<String, Object>> toggleFavorite(@PathVariable("tourId") Long tourId) {
-        String email = SecurityUtil.getCurrentUserLogin()
-                .orElseThrow(() -> new RuntimeException("Not authenticated"));
+        String email = SecurityUtil.getCurrentUserLoginOrThrow();
         com.example.travelManager.domain.UserEntity user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         Tour tour = tourService.getTourById(tourId);
-        Optional<TourFavorite> existing = favoriteRepository.findByUserIdAndTourId(user.getId(), tourId);
-        boolean favorited;
-        if (existing.isPresent()) {
-            favoriteRepository.delete(existing.get());
-            favorited = false;
-        } else {
-            TourFavorite fav = new TourFavorite();
-            fav.setUser(user);
-            fav.setTour(tour);
-            favoriteRepository.save(fav);
-            favorited = true;
-        }
+        boolean favorited = favoriteService.toggle(user, tour);
         return ResponseEntity.ok(Map.of("favorited", favorited));
     }
 
@@ -273,7 +278,7 @@ public class TourController {
         if (email == null) return ResponseEntity.ok(Map.of("favorited", false));
         com.example.travelManager.domain.UserEntity user = userRepository.findByEmail(email).orElse(null);
         if (user == null) return ResponseEntity.ok(Map.of("favorited", false));
-        boolean favorited = favoriteRepository.existsByUserIdAndTourId(user.getId(), tourId);
+        boolean favorited = favoriteService.isFavorited(user.getId(), tourId);
         return ResponseEntity.ok(Map.of("favorited", favorited));
     }
 
@@ -284,8 +289,7 @@ public class TourController {
         com.example.travelManager.domain.UserEntity user = userRepository.findByEmail(email)
                 .orElse(null);
         if (user == null) return ResponseEntity.ok(java.util.List.of());
-        List<Long> tourIds = favoriteRepository.findByUserId(user.getId())
-                .stream().map(f -> f.getTour().getId()).toList();
+        List<Long> tourIds = favoriteService.getFavoriteTourIds(user.getId());
         return ResponseEntity.ok(tourIds.stream().map(id -> toListResponse(tourService.getTourById(id))).toList());
     }
 
@@ -314,6 +318,16 @@ public class TourController {
     }
 
     private TourResponse toListResponse(Tour tour) {
+        return toListResponse(tour, null, null, null);
+    }
+
+    /**
+     * Dùng cho danh sách tour — nhận vào các map đã batch-query sẵn (rating trung bình,
+     * số lượt khởi hành, ảnh đại diện) để tránh N+1 query khi map từng tour trong loop.
+     */
+    private TourResponse toListResponse(Tour tour, Map<Long, Double> avgRatingByTourId,
+                                         Map<Long, Long> departureCountByTourId,
+                                         Map<Long, String> firstImageByTourId) {
         TourResponse res = new TourResponse();
         res.setId(tour.getId());
         res.setName(tour.getName());
@@ -325,12 +339,23 @@ public class TourController {
         res.setDurationDays(tour.getDurationDays());
         res.setMaxSlots(tour.getMaxSlots());
         res.setStatus(tour.getStatus());
-        res.setTotalDepartures(tour.getDepartures().size());
-        res.setAverageRating(reviewRepository.findAverageRatingByTourId(tour.getId()));
-        List<TourImage> imgs = imageRepository.findByTourIdOrderBySortOrderAsc(tour.getId());
-        if (!imgs.isEmpty()) {
-            String b64 = blobToBase64(imgs.get(0).getImageData());
+
+        res.setTotalDepartures(departureCountByTourId != null
+                ? departureCountByTourId.getOrDefault(tour.getId(), 0L).intValue()
+                : tour.getDepartures().size());
+        res.setAverageRating(avgRatingByTourId != null
+                ? avgRatingByTourId.get(tour.getId())
+                : reviewRepository.findAverageRatingByTourId(tour.getId()));
+
+        if (firstImageByTourId != null) {
+            String b64 = firstImageByTourId.get(tour.getId());
             if (b64 != null) res.setImages(java.util.List.of(b64));
+        } else {
+            List<TourImage> imgs = imageRepository.findByTourIdOrderBySortOrderAsc(tour.getId());
+            if (!imgs.isEmpty()) {
+                String b64 = blobToBase64(imgs.get(0).getImageData());
+                if (b64 != null) res.setImages(java.util.List.of(b64));
+            }
         }
         return res;
     }

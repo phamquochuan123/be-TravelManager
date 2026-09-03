@@ -3,7 +3,9 @@ package com.example.travelManager.service.hotel;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.sql.SQLException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.stereotype.Service;
@@ -14,8 +16,10 @@ import com.example.travelManager.domain.hotel.Room;
 import com.example.travelManager.domain.request.hotel.RoomCreateRequest;
 import com.example.travelManager.exception.InternalServerException;
 import com.example.travelManager.exception.ResourceNotFoundException;
+import com.example.travelManager.repository.hotel.BookedRoomRepository;
 import com.example.travelManager.repository.hotel.HotelRepository;
 import com.example.travelManager.repository.hotel.RoomRepository;
+import com.example.travelManager.util.constant.hotel.HotelBookingStatus;
 
 import lombok.RequiredArgsConstructor;
 
@@ -25,6 +29,7 @@ public class RoomService implements IRoomService {
 
     private final RoomRepository roomRepository;
     private final HotelRepository hotelRepository;
+    private final BookedRoomRepository bookedRoomRepository;
 
     @Override
     public Room addNewRoom(MultipartFile file, String roomType, BigDecimal roomPrice)
@@ -60,11 +65,13 @@ public class RoomService implements IRoomService {
     @Override
     public void deleteRoom(Long roomId) {
         Optional<Room> theRoom = roomRepository.findById(roomId);
-        if (theRoom.isPresent()) {
-            roomRepository.deleteById(roomId);
-        } else {
+        if (theRoom.isEmpty()) {
             throw new ResourceNotFoundException("Sorry, Room not found!");
         }
+        if (bookedRoomRepository.existsByRoom_IdAndStatusNot(roomId, HotelBookingStatus.CANCELLED)) {
+            throw new IllegalStateException("Không thể xóa phòng đang có booking hoạt động");
+        }
+        roomRepository.deleteById(roomId);
     }
 
     @Override
@@ -140,11 +147,24 @@ public class RoomService implements IRoomService {
     }
 
     @Override
+    public Map<Long, Long> countRoomsByHotelIds(List<Long> hotelIds) {
+        if (hotelIds.isEmpty()) return Map.of();
+        Map<Long, Long> counts = new HashMap<>();
+        for (Object[] row : roomRepository.countGroupedByHotelIds(hotelIds)) {
+            counts.put((Long) row[0], (Long) row[1]);
+        }
+        return counts;
+    }
+
+    @Override
     public void deleteRoomFromHotel(Long hotelId, Long roomId) {
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new ResourceNotFoundException("Room not found: " + roomId));
         if (room.getHotel() == null || !room.getHotel().getId().equals(hotelId)) {
             throw new IllegalArgumentException("Room does not belong to hotel " + hotelId);
+        }
+        if (bookedRoomRepository.existsByRoom_IdAndStatusNot(roomId, HotelBookingStatus.CANCELLED)) {
+            throw new IllegalStateException("Không thể xóa phòng đang có booking hoạt động");
         }
         roomRepository.deleteById(roomId);
     }

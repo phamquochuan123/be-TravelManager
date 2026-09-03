@@ -1,8 +1,8 @@
 package com.example.travelManager.service;
 
+import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -21,10 +21,39 @@ import com.example.travelManager.repository.UserRepository;
 @Service
 public class ProfileServiceImpl implements ProfileService {
 
+    /**
+     * OTP phải sinh bằng PRNG mật mã. ThreadLocalRandom (dùng trước đây) đoán được
+     * nếu quan sát đủ output — với OTP reset mật khẩu thì đó là đường chiếm tài khoản.
+     */
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
+    /** Khoảng chờ tối thiểu giữa 2 lần gửi OTP cho CÙNG một email (chống dội bom mail). */
+    private static final long OTP_RESEND_COOLDOWN_MILLIS = 60 * 1000L;
+
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
     private final RoleRepository roleRepository;
+
+    /** OTP 6 chữ số, giữ cả những mã bắt đầu bằng 0 (cách cũ loại bỏ, làm hẹp không gian mã). */
+    private static String generateOtp() {
+        return String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
+    }
+
+    /**
+     * OTP hiện tại có vừa được phát trong vòng cooldown không.
+     * Suy ngược từ thời điểm hết hạn: thời điểm phát = expireAt - totalLifetime.
+     *
+     * @param expireAt      mốc hết hạn của OTP đang lưu (0 nếu chưa từng phát)
+     * @param totalLifetime tổng thời gian sống của loại OTP đó
+     */
+    private static boolean isWithinResendCooldown(long expireAt, long totalLifetime) {
+        if (expireAt <= 0) {
+            return false;
+        }
+        long issuedAt = expireAt - totalLifetime;
+        return System.currentTimeMillis() - issuedAt < OTP_RESEND_COOLDOWN_MILLIS;
+    }
 
     public ProfileServiceImpl(UserRepository userRepository,
             PasswordEncoder passwordEncoder,
@@ -116,11 +145,18 @@ public class ProfileServiceImpl implements ProfileService {
 
     @Override
     public void sendResetOtp(String email) {
-        UserEntity existingEntity = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy user: " + email));
+        // Endpoint này public. Ném "không tìm thấy user" ra ngoài là để lộ email nào đã đăng ký,
+        // nên khi không có tài khoản thì im lặng trả về như thể đã gửi.
+        UserEntity existingEntity = userRepository.findByEmail(email).orElse(null);
+        if (existingEntity == null) {
+            return;
+        }
+        // Chống dội bom mail vào một nạn nhân cụ thể: OTP cũ vừa phát chưa quá 60 giây thì bỏ qua.
+        if (isWithinResendCooldown(existingEntity.getResetOtpExpireAt(), 15 * 60 * 1000L)) {
+            return;
+        }
 
-        // generate 6 digit otp
-        String otp = String.valueOf(ThreadLocalRandom.current().nextInt(100000, 1000000));
+        String otp = generateOtp();
 
         // calculate expiry time (current time + 15 minutes in milliseconds)
         long expiryTime = System.currentTimeMillis() + (15 * 60 * 1000);
@@ -175,8 +211,11 @@ public class ProfileServiceImpl implements ProfileService {
         UserEntity existingUser = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy user: " + email));
 
-        // generate 6 digit otp
-        String otp = String.valueOf(ThreadLocalRandom.current().nextInt(100000, 1000000));
+        if (isWithinResendCooldown(existingUser.getVerifyOtpExpireAt(), 24 * 60 * 60 * 1000L)) {
+            return;
+        }
+
+        String otp = generateOtp();
 
         // calculate expiry time (current time + 24 hours in milliseconds)
         long expiryTime = System.currentTimeMillis() + (24 * 60 * 60 * 1000);

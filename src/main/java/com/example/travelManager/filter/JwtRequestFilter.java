@@ -11,8 +11,10 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import com.example.travelManager.domain.response.ErrorResponse;
 import com.example.travelManager.repository.UserRepository;
 import com.example.travelManager.util.JwtUtil;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -23,6 +25,8 @@ import jakarta.servlet.http.HttpServletResponse;
 @Component
 public class JwtRequestFilter extends OncePerRequestFilter {
 
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     private final JwtUtil jwtUtil;
     private final UserRepository userRepository;
 
@@ -32,7 +36,7 @@ public class JwtRequestFilter extends OncePerRequestFilter {
     }
 
     private static final List<String> PUBLIC_URLS = List.of("/login", "/register", "/send-reset-otp", "/reset-password",
-            "/logout", "/verify-otp", "/send-otp", "/admin/setup");
+            "/logout", "/verify-otp", "/send-otp", "/admin/setup", "/auth/google");
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -72,21 +76,33 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                 email = jwtUtil.extractEmail(jwt);
 
                 if (email != null && !jwtUtil.isTokenExpired(jwt)) {
-                    // Kiểm tra tài khoản có bị khoá không
                     var userOpt = userRepository.findByEmail(email);
-                    if (userOpt.isPresent() && Boolean.FALSE.equals(userOpt.get().getIsActive())) {
-                        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-                        response.setContentType("application/json;charset=UTF-8");
-                        String reason = userOpt.get().getLockReason() != null ? userOpt.get().getLockReason() : "";
-                        String safeReason = reason.replace("\\", "\\\\").replace("\"", "\\\"")
-                                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
-                        response.getWriter().write("{\"error\":\"Tài khoản đã bị khoá\",\"reason\":\"" + safeReason + "\"}");
+
+                    // Tài khoản đã bị xoá khỏi DB — token cũ không được phép dùng tiếp.
+                    // (Trước đây nhánh này rơi thẳng xuống phần authenticate bên dưới.)
+                    if (userOpt.isEmpty()) {
+                        filterChain.doFilter(request, response);
                         return;
                     }
 
-                    List<SimpleGrantedAuthority> authorities = jwtUtil.extractRoles(jwt).stream()
-                            .map(SimpleGrantedAuthority::new)
-                            .collect(Collectors.toList());
+                    // Kiểm tra tài khoản có bị khoá không
+                    if (Boolean.FALSE.equals(userOpt.get().getIsActive())) {
+                        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                        response.setContentType("application/json;charset=UTF-8");
+                        String reason = userOpt.get().getLockReason();
+                        String message = "Tài khoản đã bị khoá" + (reason != null && !reason.isBlank() ? ": " + reason : "");
+                        MAPPER.writeValue(response.getWriter(), new ErrorResponse(403, message));
+                        return;
+                    }
+
+                    // Quyền lấy từ DB, KHÔNG lấy từ claim "roles" trong token: token sống 10 tiếng,
+                    // nếu tin claim thì ADMIN hạ quyền một STAFF xong người đó vẫn giữ quyền cũ
+                    // tới khi token hết hạn. User đã query sẵn ở trên nên không tốn thêm query nào.
+                    var role = userOpt.get().getRole();
+                    // Cùng quy ước với AppUserDetailsService: "ROLE_" + tên role viết hoa.
+                    List<SimpleGrantedAuthority> authorities = (role == null || role.getName() == null)
+                            ? List.of()
+                            : List.of(new SimpleGrantedAuthority("ROLE_" + role.getName().toUpperCase()));
 
                     UsernamePasswordAuthenticationToken authenticationToken =
                             new UsernamePasswordAuthenticationToken(email, null, authorities);
@@ -95,8 +111,8 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authenticationToken);
                 }
 
-            } catch (io.jsonwebtoken.JwtException e) {
-                // Covers: Expired, Malformed, Signature, Unsupported
+            } catch (io.jsonwebtoken.JwtException | IllegalArgumentException e) {
+                // Covers: Expired, Malformed, Signature, Unsupported, blank/empty token
             }
         }
 

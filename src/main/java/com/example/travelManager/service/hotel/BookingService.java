@@ -15,4 +15,8 @@ public class BookingService {
     public List<BookedRoom> getAllBookingsByRoomId(Long roomId) {
         return bookedRoomService.getAllBookingsByRoomId(roomId);
     }
+
+    public List<BookedRoom> getAllBookingsByRoomIds(List<Long> roomIds) {
+        return bookedRoomService.getAllBookingsByRoomIds(roomIds);
+    }
 }

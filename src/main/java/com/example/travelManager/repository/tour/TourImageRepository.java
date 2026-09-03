@@ -9,4 +9,6 @@ import com.example.travelManager.domain.tour.TourImage;
 public interface TourImageRepository extends JpaRepository<TourImage, Long> {
 
     List<TourImage> findByTourIdOrderBySortOrderAsc(Long tourId);
+
+    List<TourImage> findByTourIdInOrderByTourIdAscSortOrderAsc(List<Long> tourIds);
 }

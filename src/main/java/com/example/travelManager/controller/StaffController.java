@@ -31,8 +31,7 @@ public class StaffController {
      */
     @GetMapping("/my-tours")
     public ResponseEntity<List<DepartureScheduleResponse>> myTours() {
-        String email = SecurityUtil.getCurrentUserLogin()
-                .orElseThrow(() -> new RuntimeException("Not authenticated"));
+        String email = SecurityUtil.getCurrentUserLoginOrThrow();
         List<TourDeparture> departures = departureRepository.findByStaffEmailOrderByDepartureDateAsc(email);
         return ResponseEntity.ok(departures.stream().map(this::toDepartureSchedule).toList());
     }
@@ -43,8 +42,7 @@ public class StaffController {
      */
     @GetMapping("/my-tours/{departureId}/passengers")
     public ResponseEntity<List<PassengerResponse>> passengers(@PathVariable("departureId") Long departureId) {
-        String email = SecurityUtil.getCurrentUserLogin()
-                .orElseThrow(() -> new RuntimeException("Not authenticated"));
+        String email = SecurityUtil.getCurrentUserLoginOrThrow();
 
         TourDeparture departure = departureRepository.findById(departureId)
                 .orElseThrow(() -> new ResourceNotFoundException("Departure not found: " + departureId));

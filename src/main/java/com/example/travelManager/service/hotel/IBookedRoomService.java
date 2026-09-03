@@ -6,10 +6,12 @@ import com.example.travelManager.domain.request.hotel.BookingRequest;
 import java.util.List;
 
 public interface IBookedRoomService {
-    String bookRoom(Long hotelId, Long roomId, BookingRequest request);
+    /** @param currentUserEmail email của user đang đăng nhập — dùng để gán chủ sở hữu thật cho booking. */
+    String bookRoom(Long hotelId, Long roomId, BookingRequest request, String currentUserEmail);
     BookedRoom findByConfirmationCode(String confirmationCode);
     List<BookedRoom> getAllBookings();
     List<BookedRoom> getAllBookingsByRoomId(Long roomId);
+    List<BookedRoom> getAllBookingsByRoomIds(List<Long> roomIds);
     List<BookedRoom> getAllBookingsByHotelId(Long hotelId);
     List<BookedRoom> getBookingsByGuestEmail(String email);
     void cancelBooking(Long bookingId);

@@ -13,6 +13,7 @@ public class RestaurantBookingResponse {
     private Long restaurantId;
     private String restaurantName;
     private String restaurantCity;
+    private String restaurantPhoto;
     private LocalDate bookingDate;
     private LocalTime bookingTime;
     private int guestCount;

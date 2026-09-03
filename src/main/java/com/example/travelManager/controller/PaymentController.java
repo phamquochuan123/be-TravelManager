@@ -1,8 +1,15 @@
 package com.example.travelManager.controller;
 
 import com.example.travelManager.domain.Payment;
+import com.example.travelManager.domain.hotel.BookedRoom;
+import com.example.travelManager.domain.restaurant.RestaurantBooking;
+import com.example.travelManager.domain.tour.TourBooking;
+import com.example.travelManager.exception.ResourceNotFoundException;
 import com.example.travelManager.repository.PaymentRepository;
 import com.example.travelManager.repository.UserRepository;
+import com.example.travelManager.repository.hotel.BookedRoomRepository;
+import com.example.travelManager.repository.restaurant.RestaurantBookingRepository;
+import com.example.travelManager.repository.tour.TourBookingRepository;
 import com.example.travelManager.service.PaymentIpnService;
 import com.example.travelManager.util.SecurityUtil;
 import com.example.travelManager.util.VNPayUtil;
@@ -10,16 +17,15 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import com.example.travelManager.service.hotel.BookedRoomServiceImpl;
 import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @RestController
 @RequestMapping("/payment")
@@ -30,6 +36,13 @@ public class PaymentController {
     private final UserRepository userRepository;
     private final VNPayUtil vnPayUtil;
     private final PaymentIpnService paymentIpnService;
+    private final TourBookingRepository tourBookingRepository;
+    private final BookedRoomRepository bookedRoomRepository;
+    private final RestaurantBookingRepository restaurantBookingRepository;
+
+    // Nhà hàng chưa có khái niệm giá trong domain model — tiền cọc cố định,
+    // phải khớp với DEPOSIT_AMOUNT ở react travel manager/src/pages/restaurants/BookRestaurant.jsx
+    private static final BigDecimal RESTAURANT_DEPOSIT_AMOUNT = BigDecimal.valueOf(100_000);
 
     // FE gửi "TOUR_BOOKING" → BE lưu "TOUR"
     private static final Map<String, String> FE_TO_BE_TYPE = Map.of(
@@ -56,11 +69,14 @@ public class PaymentController {
         String txnRef = UUID.randomUUID().toString().replace("-", "").substring(0, 20);
         String ipAddr = getClientIp(httpRequest);
 
+        // Không tin số tiền client gửi — luôn tự tra lại giá thực từ booking trong DB
+        BigDecimal amount = resolveTrustedAmount(request.getBookingType(), request.getBookingId(), email);
+
         Payment payment = new Payment();
         payment.setBookingType(request.getBookingType());
         payment.setBookingId(request.getBookingId());
         payment.setUserEmail(email);
-        payment.setAmount(request.getAmount());
+        payment.setAmount(amount);
         payment.setTxnRef(txnRef);
         payment.setOrderInfo(request.getOrderInfo() != null
                 ? request.getOrderInfo()
@@ -70,7 +86,7 @@ public class PaymentController {
 
         String payUrl = vnPayUtil.createPaymentUrl(
                 txnRef,
-                request.getAmount().longValue(),
+                amount.longValue(),
                 payment.getOrderInfo(),
                 ipAddr);
 
@@ -114,7 +130,9 @@ public class PaymentController {
         switch (code) {
             case "04" -> { result.put("RspCode", "04"); result.put("Message", "Invalid Amount"); }
             case "01" -> { result.put("RspCode", "02"); result.put("Message", "Order Already Confirmed"); }
-            case "99" -> { result.put("RspCode", "01"); result.put("Message", "Order Not Found"); }
+            case "98" -> { result.put("RspCode", "01"); result.put("Message", "Order Not Found"); }
+            // Xác nhận booking thất bại, giao dịch đã rollback — báo lỗi để VNPay gọi lại IPN.
+            case "99" -> { result.put("RspCode", "99"); result.put("Message", "Unknown error"); }
             default   -> { result.put("RspCode", "00"); result.put("Message", "Confirm Success"); }
         }
         return ResponseEntity.ok(result);
@@ -153,11 +171,12 @@ public class PaymentController {
             @RequestParam(name = "size", defaultValue = "10") int size) {
 
         String email = SecurityUtil.getCurrentUserLogin().orElse("");
-        List<Payment> all = paymentRepository.findByUserEmail(email);
-        // Sort mới nhất trước
-        all.sort(Comparator.comparing(Payment::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
+        // Phân trang + sắp xếp ở DB. Cách cũ load TOÀN BỘ payment của user vào RAM
+        // rồi mới sort và cắt trang — không chịu nổi khi dữ liệu lớn dần.
+        Page<Payment> pageResult = paymentRepository
+                .findByUserEmailOrderByCreatedAtDesc(email, PageRequest.of(page, size));
 
-        return ResponseEntity.ok(toPage(all, page, size, false));
+        return ResponseEntity.ok(pageResult.map(p -> toDto(p, null)));
     }
 
     /**
@@ -172,39 +191,87 @@ public class PaymentController {
             @RequestParam(name = "status", required = false)    String status,
             @RequestParam(name = "orderType", required = false)    String orderType) {
 
-        List<Payment> all = paymentRepository.findAllByOrderByCreatedAtDesc();
-
-        Stream<Payment> stream = all.stream();
-
+        // Lọc + phân trang ở DB. Cách cũ đọc TOÀN BỘ bảng payment rồi lọc bằng Stream
+        // trong bộ nhớ — mỗi lần admin mở trang là quét sạch bảng.
+        Payment.PaymentStatus statusFilter = null;
         if (status != null && !status.isBlank()) {
-            stream = stream.filter(p -> p.getStatus() != null && p.getStatus().name().equals(status));
-        }
-        if (orderType != null && !orderType.isBlank()) {
-            // FE gửi "TOUR_BOOKING" → map về "TOUR" mà BE lưu
-            String beType = FE_TO_BE_TYPE.getOrDefault(orderType, orderType);
-            stream = stream.filter(p -> beType.equals(p.getBookingType()));
-        }
-        if (search != null && !search.isBlank()) {
-            String q = search.toLowerCase();
-            stream = stream.filter(p ->
-                    (p.getTxnRef()    != null && p.getTxnRef().toLowerCase().contains(q)) ||
-                    (p.getUserEmail() != null && p.getUserEmail().toLowerCase().contains(q)));
+            try {
+                statusFilter = Payment.PaymentStatus.valueOf(status);
+            } catch (IllegalArgumentException e) {
+                // Status lạ do client gửi → coi như không có kết quả nào khớp
+                return ResponseEntity.ok(Page.empty(PageRequest.of(page, size)));
+            }
         }
 
-        List<Payment> filtered = stream.collect(Collectors.toList());
-        return ResponseEntity.ok(toPage(filtered, page, size, true));
+        // FE gửi "TOUR_BOOKING" → map về "TOUR" mà BE lưu
+        String typeFilter = (orderType != null && !orderType.isBlank())
+                ? FE_TO_BE_TYPE.getOrDefault(orderType, orderType)
+                : null;
+
+        String searchFilter = (search != null && !search.isBlank()) ? search : null;
+
+        Page<Payment> pageResult = paymentRepository.searchForAdmin(
+                statusFilter, typeFilter, searchFilter, PageRequest.of(page, size));
+
+        return ResponseEntity.ok(
+                pageResult.map(p -> toDto(p, resolveCustomerName(p.getUserEmail()))));
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    private Page<PaymentDto> toPage(List<Payment> list, int page, int size, boolean includeCustomer) {
-        int total  = list.size();
-        int from   = Math.min(page * size, total);
-        int to     = Math.min(from + size, total);
-        List<PaymentDto> content = list.subList(from, to).stream()
-                .map(p -> toDto(p, includeCustomer ? resolveCustomerName(p.getUserEmail()) : null))
-                .collect(Collectors.toList());
-        return new PageImpl<>(content, PageRequest.of(page, size), total);
+    /**
+     * Tự tra lại giá thực từ booking trong DB, không tin amount client gửi lên,
+     * đồng thời xác minh booking thuộc về user đang gọi API.
+     */
+    private BigDecimal resolveTrustedAmount(String bookingType, Long bookingId, String currentUserEmail) {
+        if (bookingType == null || bookingId == null) {
+            throw new IllegalArgumentException("Thiếu thông tin booking để tạo thanh toán");
+        }
+        String beType = FE_TO_BE_TYPE.getOrDefault(bookingType, bookingType);
+        return switch (beType) {
+            case "TOUR" -> {
+                TourBooking booking = tourBookingRepository.findById(bookingId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + bookingId));
+                if (booking.getUser() == null || !currentUserEmail.equalsIgnoreCase(booking.getUser().getEmail())) {
+                    throw new AccessDeniedException("Bạn không có quyền thanh toán cho đơn đặt tour này");
+                }
+                yield booking.getFinalPrice();
+            }
+            case "HOTEL" -> {
+                BookedRoom booking = bookedRoomRepository.findById(bookingId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + bookingId));
+                // Ưu tiên chủ sở hữu thật (user_id); guestEmail chỉ là fallback cho booking cũ
+                // vì đó là chuỗi do client tự khai lúc đặt.
+                boolean owned = booking.getUser() != null
+                        ? currentUserEmail.equalsIgnoreCase(booking.getUser().getEmail())
+                        : (booking.getGuestEmail() != null
+                                && currentUserEmail.equalsIgnoreCase(booking.getGuestEmail()));
+                if (!owned) {
+                    throw new AccessDeniedException("Bạn không có quyền thanh toán cho đơn đặt phòng này");
+                }
+                // Dùng giá đã chốt lúc đặt. Tính lại tại đây sẽ áp giá phòng HIỆN TẠI —
+                // admin sửa giá giữa lúc đặt và lúc trả tiền là khách bị tính sai.
+                if (booking.getTotalPrice() != null) {
+                    yield booking.getTotalPrice();
+                }
+                // Booking cũ tạo trước khi có cột total_price: đành tính lại như trước.
+                BigDecimal fallback = BookedRoomServiceImpl.calculateTotalPrice(
+                        booking.getRoom(), booking.getCheckInDate(), booking.getCheckOutDate());
+                if (fallback == null) {
+                    throw new IllegalStateException("Không xác định được số tiền của đơn đặt phòng này");
+                }
+                yield fallback;
+            }
+            case "RESTAURANT" -> {
+                RestaurantBooking booking = restaurantBookingRepository.findById(bookingId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + bookingId));
+                if (booking.getUser() == null || !currentUserEmail.equalsIgnoreCase(booking.getUser().getEmail())) {
+                    throw new AccessDeniedException("Bạn không có quyền thanh toán cho đơn đặt bàn này");
+                }
+                yield RESTAURANT_DEPOSIT_AMOUNT;
+            }
+            default -> throw new IllegalArgumentException("Loại booking không hợp lệ: " + bookingType);
+        };
     }
 
     private PaymentDto toDto(Payment p, String customerName) {

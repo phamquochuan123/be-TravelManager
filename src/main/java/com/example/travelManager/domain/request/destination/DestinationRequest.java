@@ -21,5 +21,11 @@ public class DestinationRequest {
     @NotBlank
     private String city;
 
+    private String address;
+
+    private Double latitude;
+
+    private Double longitude;
+
     private Boolean isActive;
 }

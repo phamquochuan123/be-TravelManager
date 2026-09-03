@@ -34,6 +34,10 @@ public class Restaurant {
 
     private String city;
 
+    private Double latitude;
+
+    private Double longitude;
+
     @Enumerated(EnumType.STRING)
     private CuisineType cuisineType;
 

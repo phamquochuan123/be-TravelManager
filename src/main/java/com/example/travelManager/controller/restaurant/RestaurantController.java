@@ -5,25 +5,32 @@ import com.example.travelManager.domain.request.restaurant.RestaurantBookingRequ
 import com.example.travelManager.domain.request.restaurant.RestaurantRequest;
 import com.example.travelManager.domain.restaurant.Restaurant;
 import com.example.travelManager.domain.restaurant.RestaurantBooking;
-import com.example.travelManager.domain.restaurant.RestaurantFavorite;
 import com.example.travelManager.domain.response.restaurant.RestaurantBookingResponse;
 import com.example.travelManager.domain.response.restaurant.RestaurantResponse;
 import com.example.travelManager.domain.tour.TourBooking;
 import com.example.travelManager.exception.ResourceNotFoundException;
 import com.example.travelManager.repository.UserRepository;
 import com.example.travelManager.repository.restaurant.RestaurantBookingRepository;
-import com.example.travelManager.repository.restaurant.RestaurantFavoriteRepository;
 import com.example.travelManager.repository.tour.TourBookingRepository;
 import com.example.travelManager.service.EmailService;
 import com.example.travelManager.service.restaurant.IRestaurantService;
+import com.example.travelManager.service.restaurant.RestaurantFavoriteService;
 import com.example.travelManager.util.SecurityUtil;
 import com.example.travelManager.util.constant.restaurant.RestaurantBookingStatus;
 import org.springframework.web.server.ResponseStatusException;
+import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PreAuthorize;
+
+import com.example.travelManager.repository.restaurant.RestaurantRepository;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -31,17 +38,18 @@ import java.io.IOException;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 
+@Slf4j
 @RestController
 @RequestMapping("/restaurants")
 @RequiredArgsConstructor
 public class RestaurantController {
 
     private final IRestaurantService restaurantService;
+    private final RestaurantRepository restaurantRepository;
     private final RestaurantBookingRepository bookingRepository;
-    private final RestaurantFavoriteRepository favoriteRepository;
+    private final RestaurantFavoriteService favoriteService;
     private final UserRepository userRepository;
     private final EmailService emailService;
     private final TourBookingRepository tourBookingRepository;
@@ -116,12 +124,13 @@ public class RestaurantController {
 
     // ── Booking ───────────────────────────────────────────────────
 
+    // @Transactional bắt buộc: khoá bi quan bên dưới chỉ có tác dụng trong phạm vi transaction.
+    @Transactional
     @PostMapping("/{restaurantId}/bookings")
     public ResponseEntity<RestaurantBookingResponse> book(
             @PathVariable("restaurantId") Long restaurantId,
             @Valid @RequestBody RestaurantBookingRequest request) {
-        String email = SecurityUtil.getCurrentUserLogin()
-                .orElseThrow(() -> new RuntimeException("Not authenticated"));
+        String email = SecurityUtil.getCurrentUserLoginOrThrow();
         UserEntity user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         Restaurant restaurant = restaurantService.getById(restaurantId);
@@ -143,6 +152,19 @@ public class RestaurantController {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                             "Nhà hàng ở " + restCity + " không phù hợp với tour đến " + tourDest);
                 }
+            }
+        }
+
+        if (restaurant.getCapacity() != null) {
+            // Khoá row nhà hàng trước khi đếm chỗ đã đặt, nếu không 2 request đồng thời
+            // cùng khung giờ đều thấy còn chỗ và cùng ghi → vượt sức chứa.
+            restaurantRepository.findByIdForUpdate(restaurant.getId());
+            int alreadyBooked = bookingRepository.sumGuestCountByRestaurantAndDateTime(
+                    restaurant.getId(), request.getBookingDate(), request.getBookingTime(),
+                    RestaurantBookingStatus.CANCELLED);
+            if (alreadyBooked + request.getGuestCount() > restaurant.getCapacity()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Nhà hàng không đủ chỗ trống vào khung giờ này");
             }
         }
 
@@ -169,26 +191,34 @@ public class RestaurantController {
                     request.getBookingTime().toString(),
                     request.getGuestCount(),
                     saved.getConfirmationCode());
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.warn("Gửi email xác nhận đặt bàn thất bại (confirmationCode={}): {}",
+                    saved.getConfirmationCode(), e.getMessage());
+        }
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(toBookingResponse(saved));
     }
 
+    @Transactional
     @GetMapping("/bookings/my")
     public ResponseEntity<List<RestaurantBookingResponse>> myBookings() {
-        String email = SecurityUtil.getCurrentUserLogin()
-                .orElseThrow(() -> new RuntimeException("Not authenticated"));
+        String email = SecurityUtil.getCurrentUserLoginOrThrow();
         return ResponseEntity.ok(
                 bookingRepository.findByUserEmailOrderByCreatedAtDesc(email)
                         .stream().map(this::toBookingResponse).toList());
     }
 
+    @Transactional
+    @PreAuthorize("hasAnyRole('ADMIN','STAFF')")
     @GetMapping("/bookings/all")
-    public ResponseEntity<List<RestaurantBookingResponse>> allBookings() {
+    public ResponseEntity<Page<RestaurantBookingResponse>> allBookings(
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size) {
+        // Phân trang ở DB. Cách cũ trả toàn bộ bảng booking trong một response.
         return ResponseEntity.ok(
-                bookingRepository.findAllByOrderByCreatedAtDesc()
-                        .stream().map(this::toBookingResponse).toList());
+                bookingRepository.findAllByOrderByCreatedAtDesc(PageRequest.of(page, size))
+                        .map(this::toBookingResponse));
     }
 
     @PatchMapping("/bookings/{bookingId}/status")
@@ -205,6 +235,18 @@ public class RestaurantController {
     public ResponseEntity<RestaurantBookingResponse> cancel(@PathVariable("bookingId") Long bookingId) {
         RestaurantBooking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
+
+        String currentEmail = SecurityUtil.getCurrentUserLogin().orElseThrow();
+        UserEntity currentUser = userRepository.findByEmail(currentEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        boolean isPrivileged = currentUser.getRole() != null &&
+                ("ADMIN".equals(currentUser.getRole().getName()) ||
+                 "STAFF".equals(currentUser.getRole().getName()));
+        if (!isPrivileged && (booking.getUser() == null
+                || !booking.getUser().getEmail().equalsIgnoreCase(currentEmail))) {
+            throw new AccessDeniedException("Không có quyền hủy booking này");
+        }
+
         booking.setStatus(RestaurantBookingStatus.CANCELLED);
         return ResponseEntity.ok(toBookingResponse(bookingRepository.save(booking)));
     }
@@ -213,23 +255,11 @@ public class RestaurantController {
 
     @PostMapping("/{restaurantId}/favorite")
     public ResponseEntity<Map<String, Object>> toggleFavorite(@PathVariable("restaurantId") Long restaurantId) {
-        String email = SecurityUtil.getCurrentUserLogin()
-                .orElseThrow(() -> new RuntimeException("Not authenticated"));
+        String email = SecurityUtil.getCurrentUserLoginOrThrow();
         UserEntity user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         Restaurant restaurant = restaurantService.getById(restaurantId);
-        Optional<RestaurantFavorite> existing = favoriteRepository.findByUserIdAndRestaurantId(user.getId(), restaurantId);
-        boolean favorited;
-        if (existing.isPresent()) {
-            favoriteRepository.delete(existing.get());
-            favorited = false;
-        } else {
-            RestaurantFavorite fav = new RestaurantFavorite();
-            fav.setUser(user);
-            fav.setRestaurant(restaurant);
-            favoriteRepository.save(fav);
-            favorited = true;
-        }
+        boolean favorited = favoriteService.toggle(user, restaurant);
         return ResponseEntity.ok(Map.of("favorited", favorited));
     }
 
@@ -239,7 +269,7 @@ public class RestaurantController {
         if (email == null) return ResponseEntity.ok(Map.of("favorited", false));
         UserEntity user = userRepository.findByEmail(email).orElse(null);
         if (user == null) return ResponseEntity.ok(Map.of("favorited", false));
-        boolean favorited = favoriteRepository.existsByUserIdAndRestaurantId(user.getId(), restaurantId);
+        boolean favorited = favoriteService.isFavorited(user.getId(), restaurantId);
         return ResponseEntity.ok(Map.of("favorited", favorited));
     }
 
@@ -249,8 +279,7 @@ public class RestaurantController {
         if (email == null) return ResponseEntity.ok(java.util.List.of());
         UserEntity user = userRepository.findByEmail(email).orElse(null);
         if (user == null) return ResponseEntity.ok(java.util.List.of());
-        List<Long> restaurantIds = favoriteRepository.findByUserId(user.getId())
-                .stream().map(f -> f.getRestaurant().getId()).toList();
+        List<Long> restaurantIds = favoriteService.getFavoriteRestaurantIds(user.getId());
         return ResponseEntity.ok(restaurantIds.stream()
                 .map(id -> toResponse(restaurantService.getById(id))).toList());
     }
@@ -286,6 +315,12 @@ public class RestaurantController {
         res.setRestaurantId(b.getRestaurant().getId());
         res.setRestaurantName(b.getRestaurant().getName());
         res.setRestaurantCity(b.getRestaurant().getCity());
+        if (b.getRestaurant().getPhoto() != null) {
+            try {
+                byte[] bytes = b.getRestaurant().getPhoto().getBytes(1, (int) b.getRestaurant().getPhoto().length());
+                res.setRestaurantPhoto(java.util.Base64.getEncoder().encodeToString(bytes));
+            } catch (java.sql.SQLException ignored) {}
+        }
         res.setBookingDate(b.getBookingDate());
         res.setBookingTime(b.getBookingTime());
         res.setGuestCount(b.getGuestCount());

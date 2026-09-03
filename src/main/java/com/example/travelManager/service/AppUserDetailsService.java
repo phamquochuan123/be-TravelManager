@@ -33,6 +33,11 @@ public class AppUserDetailsService implements UserDetailsService {
             authorities.add(new SimpleGrantedAuthority("ROLE_" + existingUser.getRole().getName().toUpperCase()));
         }
 
-        return new User(existingUser.getEmail(), existingUser.getPassWord(), authorities);
+        return User.builder()
+                .username(existingUser.getEmail())
+                .password(existingUser.getPassWord())
+                .authorities(authorities)
+                .disabled(Boolean.FALSE.equals(existingUser.getIsActive()))
+                .build();
     }
 }

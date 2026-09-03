@@ -175,6 +175,11 @@ public class TourService implements ITourService {
         if (!departureRepository.existsById(departureId)) {
             throw new ResourceNotFoundException("Departure not found with id: " + departureId);
         }
+        boolean hasActiveBookings = bookingRepository.existsByDepartureIdAndStatusIn(
+                departureId, List.of(BookingStatus.PENDING, BookingStatus.CONFIRMED));
+        if (hasActiveBookings) {
+            throw new IllegalStateException("Không thể xóa lịch khởi hành đang có booking hoạt động");
+        }
         departureRepository.deleteById(departureId);
     }
 
@@ -247,31 +252,39 @@ public class TourService implements ITourService {
             }
         }
 
-        BigDecimal rawTotal = tourPrice.add(hotelPrice).add(restaurantPrice);
+        // Restaurant thanh toán trực tiếp tại chỗ, không tính vào rawTotal/finalPrice
+        // (đồng bộ với luồng đang dùng thực tế ở TourBookingController.book)
+        BigDecimal rawTotal = tourPrice.add(hotelPrice);
 
         BigDecimal packageDiscountAmt = BigDecimal.ZERO;
-        if (tour.getPackageDiscountPercent() != null && tour.getPackageDiscountPercent() > 0) {
+        if (tour.getPackageDiscountPercent() != null && tour.getPackageDiscountPercent() > 0
+                && (room != null || restaurant != null)) {
             packageDiscountAmt = rawTotal
                     .multiply(BigDecimal.valueOf(tour.getPackageDiscountPercent() / 100.0))
                     .setScale(0, RoundingMode.HALF_UP);
         }
 
-        BigDecimal afterPackage = rawTotal.subtract(packageDiscountAmt);
-
         BigDecimal couponDiscountAmt = BigDecimal.ZERO;
         TourCoupon coupon = null;
         if (request.getCouponCode() != null && !request.getCouponCode().isBlank()) {
-            coupon = couponRepository.findValidCoupon(request.getCouponCode(), LocalDate.now())
-                    .orElseThrow(() -> new IllegalArgumentException("Mã giảm giá không hợp lệ hoặc đã hết hạn"));
-            if (coupon.getMinOrderValue() == null || afterPackage.compareTo(coupon.getMinOrderValue()) >= 0) {
+            // Lock hàng coupon để tránh race condition khi nhiều user dùng cùng mã đồng thời
+            coupon = couponRepository.findByCodeForUpdate(request.getCouponCode()).orElse(null);
+            if (coupon != null && coupon.isActive()
+                    && coupon.getUsedCount() < coupon.getUsageLimit()
+                    && !LocalDate.now().isAfter(coupon.getEndDate())
+                    && !LocalDate.now().isBefore(coupon.getStartDate())
+                    && (coupon.getMinOrderValue() == null || rawTotal.compareTo(coupon.getMinOrderValue()) >= 0)) {
                 if (coupon.getCouponType() == CouponType.PERCENT) {
-                    couponDiscountAmt = afterPackage
-                            .multiply(coupon.getDiscountValue().divide(BigDecimal.valueOf(100)))
-                            .setScale(0, RoundingMode.HALF_UP);
+                    couponDiscountAmt = rawTotal
+                            .multiply(coupon.getDiscountValue())
+                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
                 } else {
                     couponDiscountAmt = coupon.getDiscountValue();
                 }
                 coupon.setUsedCount(coupon.getUsedCount() + 1);
+                couponRepository.save(coupon);
+            } else {
+                throw new IllegalStateException("Mã giảm giá không hợp lệ, đã hết hạn hoặc đã hết lượt sử dụng");
             }
         }
 
@@ -282,14 +295,26 @@ public class TourService implements ITourService {
         // Tạo BookedRoom
         BookedRoom bookedRoom = null;
         if (room != null) {
+            LocalDate roomCheckIn = departure.getDepartureDate();
+            LocalDate roomCheckOut = departure.getDepartureDate().plusDays(tour.getDurationNights());
+            List<BookedRoom> roomConflicts = bookedRoomRepository
+                    .findByRoom_IdAndStatusNotAndCheckOutDateAfterAndCheckInDateBefore(
+                            room.getId(), HotelBookingStatus.CANCELLED, roomCheckIn, roomCheckOut);
+            if (!roomConflicts.isEmpty()) {
+                throw new IllegalStateException("Phòng đã được đặt cho khoảng thời gian này. Vui lòng chọn phòng khác.");
+            }
+
             bookedRoom = new BookedRoom();
+            bookedRoom.setUser(user);
             bookedRoom.setRoom(room);
-            bookedRoom.setCheckInDate(departure.getDepartureDate());
-            bookedRoom.setCheckOutDate(departure.getDepartureDate().plusDays(tour.getDurationNights()));
+            bookedRoom.setCheckInDate(roomCheckIn);
+            bookedRoom.setCheckOutDate(roomCheckOut);
             bookedRoom.setGuestFullName(request.getContactName());
             bookedRoom.setGuestEmail(request.getContactEmail());
             bookedRoom.setNumOfAdults(request.getNumAdults());
             bookedRoom.setNumOfChildren(request.getNumChildren());
+            // Chốt giá phòng ngay lúc đặt, khớp với hotelPrice đã cộng vào tổng tiền tour.
+            bookedRoom.setTotalPrice(hotelPrice);
             bookedRoom.calculateTotalNumOfGuests();
             bookedRoom.setStatus(HotelBookingStatus.PENDING);
             bookedRoom.setBookingConfirmationCode(
@@ -300,14 +325,22 @@ public class TourService implements ITourService {
         // Tạo RestaurantBooking
         RestaurantBooking restaurantBooking = null;
         if (restaurant != null) {
+            LocalDate restaurantBookingDate = departure.getDepartureDate();
+            LocalTime restaurantBookingTime = request.getRestaurantBookingTime() != null
+                    ? request.getRestaurantBookingTime() : LocalTime.of(12, 0);
+            if (restaurant.getCapacity() != null) {
+                int alreadyBooked = restaurantBookingRepository.sumGuestCountByRestaurantAndDateTime(
+                        restaurant.getId(), restaurantBookingDate, restaurantBookingTime,
+                        RestaurantBookingStatus.CANCELLED);
+                if (alreadyBooked + totalGuests > restaurant.getCapacity()) {
+                    throw new IllegalStateException("Nhà hàng không đủ chỗ trống vào khung giờ này");
+                }
+            }
             restaurantBooking = new RestaurantBooking();
             restaurantBooking.setRestaurant(restaurant);
             restaurantBooking.setUser(user);
-            restaurantBooking.setBookingDate(departure.getDepartureDate());
-            restaurantBooking.setBookingTime(
-                    request.getRestaurantBookingTime() != null
-                            ? request.getRestaurantBookingTime()
-                            : LocalTime.of(12, 0));
+            restaurantBooking.setBookingDate(restaurantBookingDate);
+            restaurantBooking.setBookingTime(restaurantBookingTime);
             restaurantBooking.setGuestCount(totalGuests);
             restaurantBooking.setContactName(request.getContactName());
             restaurantBooking.setContactPhone(request.getContactPhone());
@@ -338,11 +371,12 @@ public class TourService implements ITourService {
         booking.setFinalPrice(finalPrice);
         booking.setNote(request.getNote());
         booking.setStatus(BookingStatus.PENDING);
-        booking = bookingRepository.save(booking);
 
-        // Giảm slot
-        departure.setAvailableSlots(departure.getAvailableSlots() - totalGuests);
-        departureRepository.save(departure);
+        // Giảm slot nguyên tử (UPDATE ... WHERE availableSlots >= needed) — tránh race condition overselling
+        if (departureRepository.decrementSlot(departure.getId(), totalGuests) == 0) {
+            throw new IllegalStateException("Hết chỗ trống");
+        }
+        booking = bookingRepository.save(booking);
 
         return toBookingResponse(booking);
     }
@@ -357,6 +391,13 @@ public class TourService implements ITourService {
     public List<TourBookingResponse> getAllBookings() {
         return bookingRepository.findAllByOrderByCreatedAtDesc()
                 .stream().map(this::toBookingResponse).toList();
+    }
+
+    /** Bản phân trang ở DB — dùng cho endpoint quản trị, tránh trả nguyên bảng. */
+    public org.springframework.data.domain.Page<TourBookingResponse> getAllBookings(int page, int size) {
+        return bookingRepository
+                .findAllByOrderByCreatedAtDesc(org.springframework.data.domain.PageRequest.of(page, size))
+                .map(this::toBookingResponse);
     }
 
     private TourBookingResponse toBookingResponse(TourBooking b) {

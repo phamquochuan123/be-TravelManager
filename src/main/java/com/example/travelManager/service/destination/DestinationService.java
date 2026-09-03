@@ -87,5 +87,8 @@ public class DestinationService implements IDestinationService {
         d.setDestinationType(req.getDestinationType());
         d.setProvince(req.getProvince());
         d.setCity(req.getCity());
+        d.setAddress(req.getAddress());
+        d.setLatitude(req.getLatitude());
+        d.setLongitude(req.getLongitude());
     }
 }

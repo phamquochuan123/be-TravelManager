@@ -1,5 +1,6 @@
 package com.example.travelManager.domain.request.hotel;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -29,4 +30,9 @@ public class BookingRequest {
     private int numOfChildren;
 
     private Long tourBookingId;
+
+    @AssertTrue(message = "Ngày check-out phải sau ngày check-in")
+    public boolean isCheckOutAfterCheckIn() {
+        return checkInDate == null || checkOutDate == null || checkOutDate.isAfter(checkInDate);
+    }
 }

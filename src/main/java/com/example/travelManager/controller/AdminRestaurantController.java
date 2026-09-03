@@ -56,6 +56,8 @@ public class AdminRestaurantController {
             @RequestParam(name = "name") String name,
             @RequestParam(name = "address", required = false, defaultValue = "") String address,
             @RequestParam(name = "city", required = false, defaultValue = "") String city,
+            @RequestParam(name = "latitude", required = false) Double latitude,
+            @RequestParam(name = "longitude", required = false) Double longitude,
             @RequestParam(name = "cuisineType", required = false, defaultValue = "") String cuisineType,
             @RequestParam(name = "openTime", required = false, defaultValue = "08:00") String openTime,
             @RequestParam(name = "closeTime", required = false, defaultValue = "22:00") String closeTime,
@@ -66,7 +68,9 @@ public class AdminRestaurantController {
         Restaurant restaurant = new Restaurant();
         restaurant.setName(name);
         restaurant.setAddress(address);
-        restaurant.setCity(city.isBlank() ? null : city);
+        restaurant.setCity(city);
+        restaurant.setLatitude(latitude);
+        restaurant.setLongitude(longitude);
         restaurant.setDescription(description);
         restaurant.setOpeningHours(openTime + "-" + closeTime);
         restaurant.setCapacity(maxTables);
@@ -90,6 +94,8 @@ public class AdminRestaurantController {
             @RequestParam(name = "name") String name,
             @RequestParam(name = "address", required = false, defaultValue = "") String address,
             @RequestParam(name = "city", required = false, defaultValue = "") String city,
+            @RequestParam(name = "latitude", required = false) Double latitude,
+            @RequestParam(name = "longitude", required = false) Double longitude,
             @RequestParam(name = "cuisineType", required = false, defaultValue = "") String cuisineType,
             @RequestParam(name = "openTime", required = false, defaultValue = "08:00") String openTime,
             @RequestParam(name = "closeTime", required = false, defaultValue = "22:00") String closeTime,
@@ -101,7 +107,9 @@ public class AdminRestaurantController {
                 .orElseThrow(() -> new ResourceNotFoundException("Restaurant not found: " + id));
         restaurant.setName(name);
         restaurant.setAddress(address);
-        restaurant.setCity(city.isBlank() ? null : city);
+        restaurant.setCity(city);
+        if (latitude != null) restaurant.setLatitude(latitude);
+        if (longitude != null) restaurant.setLongitude(longitude);
         restaurant.setDescription(description);
         restaurant.setOpeningHours(openTime + "-" + closeTime);
         restaurant.setCapacity(maxTables);
@@ -132,6 +140,8 @@ public class AdminRestaurantController {
         item.setId(r.getId());
         item.setName(r.getName());
         item.setAddress(r.getAddress() != null ? r.getAddress() : "");
+        item.setLatitude(r.getLatitude());
+        item.setLongitude(r.getLongitude());
         item.setCuisineType(r.getCuisineType() != null ? r.getCuisineType().name() : "");
         item.setMaxTables(r.getCapacity() != null ? r.getCapacity() : 0);
         item.setDescription(r.getDescription());
@@ -170,6 +180,8 @@ public class AdminRestaurantController {
         private long id;
         private String name;
         private String address;
+        private Double latitude;
+        private Double longitude;
         private String cuisineType;
         private String openTime;
         private String closeTime;

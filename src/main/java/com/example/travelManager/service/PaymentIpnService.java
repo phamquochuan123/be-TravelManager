@@ -5,12 +5,14 @@ import com.example.travelManager.repository.PaymentRepository;
 import com.example.travelManager.repository.hotel.BookedRoomRepository;
 import com.example.travelManager.repository.restaurant.RestaurantBookingRepository;
 import com.example.travelManager.repository.tour.TourBookingRepository;
+import com.example.travelManager.util.constant.hotel.HotelBookingStatus;
 import com.example.travelManager.util.constant.restaurant.RestaurantBookingStatus;
 import com.example.travelManager.util.constant.tour.BookingStatus;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
 
 @Service
 @Slf4j
@@ -27,13 +29,14 @@ public class PaymentIpnService {
      *   "00" = thành công
      *   "01" = đã xử lý rồi (status SUCCESS) — báo VNPay dừng retry
      *   "04" = sai số tiền
-     *   "99" = không tìm thấy payment
+     *   "99" = xác nhận booking thất bại — đã rollback, cần VNPay gọi lại
+     *   "98" = không tìm thấy payment
      */
     @Transactional
     public String processIpn(String txnRef, String responseCode,
                               String transactionNo, String bankCode, long vnpAmount) {
         Payment payment = paymentRepository.findByTxnRef(txnRef).orElse(null);
-        if (payment == null) return "99";
+        if (payment == null) return "98";
 
         // Amount validation
         if (payment.getAmount().longValue() != vnpAmount) return "04";
@@ -61,8 +64,14 @@ public class PaymentIpnService {
             try {
                 confirmBooking(payment.getBookingType(), payment.getBookingId());
             } catch (Exception e) {
+                // Trước đây chỗ này chỉ log rồi vẫn trả "00" (= Confirm Success) cho VNPay.
+                // Hậu quả: khách đã mất tiền nhưng booking kẹt PENDING, và vì báo thành công
+                // nên VNPay không bao giờ gọi lại IPN → không có cơ hội tự phục hồi.
+                // Giờ rollback transaction (payment quay lại PENDING) và trả "99" để VNPay retry.
                 log.error("confirmBooking failed txnRef={} type={} id={}: {}",
                           txnRef, payment.getBookingType(), payment.getBookingId(), e.getMessage(), e);
+                TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+                return "99";
             }
         }
         return "00";
@@ -76,10 +85,25 @@ public class PaymentIpnService {
                     b.setStatus(BookingStatus.CONFIRMED);
                     tourBookingRepository.save(b);
                 }
+                // Phòng và bàn đặt kèm trong gói tour cũng được xác nhận theo, vì chúng
+                // được tạo ở trạng thái PENDING và thanh toán chung một giao dịch với tour.
+                if (b.getBookedRoom() != null
+                        && b.getBookedRoom().getStatus() == HotelBookingStatus.PENDING) {
+                    b.getBookedRoom().setStatus(HotelBookingStatus.CONFIRMED);
+                    bookedRoomRepository.save(b.getBookedRoom());
+                }
+                if (b.getRestaurantBooking() != null
+                        && b.getRestaurantBooking().getStatus() == RestaurantBookingStatus.PENDING) {
+                    b.getRestaurantBooking().setStatus(RestaurantBookingStatus.CONFIRMED);
+                    restaurantBookingRepository.save(b.getRestaurantBooking());
+                }
             });
-            case "HOTEL" -> bookedRoomRepository.findById(bookingId).ifPresent(b ->
-                log.warn("Hotel booking {} confirmed — no status field. Manual review needed.", bookingId)
-            );
+            case "HOTEL" -> bookedRoomRepository.findById(bookingId).ifPresent(b -> {
+                if (b.getStatus() == HotelBookingStatus.PENDING) {
+                    b.setStatus(HotelBookingStatus.CONFIRMED);
+                    bookedRoomRepository.save(b);
+                }
+            });
             case "RESTAURANT" -> restaurantBookingRepository.findById(bookingId).ifPresent(b -> {
                 if (b.getStatus() == RestaurantBookingStatus.PENDING) {
                     b.setStatus(RestaurantBookingStatus.CONFIRMED);

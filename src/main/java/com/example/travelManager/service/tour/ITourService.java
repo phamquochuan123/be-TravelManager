@@ -53,4 +53,7 @@ public interface ITourService {
     List<TourBookingResponse> getMyBookings(String userEmail);
 
     List<TourBookingResponse> getAllBookings();
+
+    /** Bản phân trang ở DB — dùng cho endpoint quản trị, tránh trả nguyên bảng. */
+    org.springframework.data.domain.Page<TourBookingResponse> getAllBookings(int page, int size);
 }

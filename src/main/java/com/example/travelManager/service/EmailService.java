@@ -1,14 +1,20 @@
 package com.example.travelManager.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 public class EmailService {
 
     private final JavaMailSender mailSender;
+
+    @Value("${spring.mail.username}")
+    private String mailFrom;
 
     @Value("${app.admin.email:admin@travelmanager.com}")
     private String adminEmail;
@@ -19,7 +25,7 @@ public class EmailService {
 
     public void sendWelcomeEmail(String toEmail, String name) {
         SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom("phamquochuan9876@gmail.com"); // TRÙNG SMTP USERNAME
+        message.setFrom(mailFrom);
         message.setTo(toEmail);
         message.setSubject("Welcome to our Travel Manager App");
         message.setText(
@@ -31,7 +37,7 @@ public class EmailService {
 
     public void sendResetOtpEmail(String toEmail, String otp) {
         SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom("phamquochuan9876@gmail.com");
+        message.setFrom(mailFrom);
         message.setTo(toEmail);
         message.setSubject("PassWord Reset OTP");
         message.setText("Your OTP for resetting your password is " + otp
@@ -41,18 +47,19 @@ public class EmailService {
 
     public void sendOtpEmail(String toEmail, String otp) {
         SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom("phamquochuan9876@gmail.com");
+        message.setFrom(mailFrom);
         message.setTo(toEmail);
         message.setSubject("Account Verification OTP");
         message.setText("Your OTP is " + otp + ". Verify your account using this OTP.");
         mailSender.send(message);
     }
 
+    @Async
     public void sendHotelBookingConfirmation(String toEmail, String guestName,
             String hotelName, String roomNumber,
             String checkIn, String checkOut, String confirmationCode) {
         SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom("phamquochuan9876@gmail.com");
+        message.setFrom(mailFrom);
         message.setTo(toEmail);
         message.setSubject("Xác nhận đặt phòng - " + confirmationCode);
         message.setText(
@@ -68,12 +75,13 @@ public class EmailService {
         mailSender.send(message);
     }
 
+    @Async
     public void sendTourBookingConfirmation(String toEmail, String contactName,
             String tourName, String departureDate,
             int numAdults, int numChildren,
             java.math.BigDecimal finalPrice, String bookingId) {
         SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom("phamquochuan9876@gmail.com");
+        message.setFrom(mailFrom);
         message.setTo(toEmail);
         message.setSubject("Xác nhận đặt tour - " + tourName);
         message.setText(
@@ -90,10 +98,11 @@ public class EmailService {
         mailSender.send(message);
     }
 
+    @Async
     public void sendIncidentReportNotification(String staffName, String tourName,
             String departureDate, String incidentType, String description) {
         SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom("phamquochuan9876@gmail.com");
+        message.setFrom(mailFrom);
         message.setTo(adminEmail);
         message.setSubject("[CẢNH BÁO] Sự cố Tour: " + tourName);
         message.setText(
@@ -107,11 +116,12 @@ public class EmailService {
         mailSender.send(message);
     }
 
+    @Async
     public void sendRestaurantBookingConfirmation(String toEmail, String contactName,
             String restaurantName, String bookingDate, String bookingTime,
             int guestCount, String confirmationCode) {
         SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom("phamquochuan9876@gmail.com");
+        message.setFrom(mailFrom);
         message.setTo(toEmail);
         message.setSubject("Xác nhận đặt bàn - " + confirmationCode);
         message.setText(

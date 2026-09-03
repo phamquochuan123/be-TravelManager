@@ -36,13 +36,16 @@ public class SecurityConfig {
     private final AppUserDetailsService appUserDetailsService;
     private final JwtRequestFilter jwtRequestFilter;
     private final CustomAuthenticationEntryPoint customAuthenticationEntryPoint;
+    private final CustomAccessDeniedHandler customAccessDeniedHandler;
 
     public SecurityConfig(AppUserDetailsService appUserDetailsService,
             JwtRequestFilter jwtRequestFilter,
-            CustomAuthenticationEntryPoint customAuthenticationEntryPoint) {
+            CustomAuthenticationEntryPoint customAuthenticationEntryPoint,
+            CustomAccessDeniedHandler customAccessDeniedHandler) {
         this.appUserDetailsService = appUserDetailsService;
         this.jwtRequestFilter = jwtRequestFilter;
         this.customAuthenticationEntryPoint = customAuthenticationEntryPoint;
+        this.customAccessDeniedHandler = customAccessDeniedHandler;
     }
 
     @Bean
@@ -51,7 +54,7 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/login", "/register", "/send-reset-otp", "/reset-password",
-                                "/logout", "/admin/setup", "/verify-otp", "/send-otp")
+                                "/logout", "/admin/setup", "/verify-otp", "/send-otp", "/auth/google")
                         .permitAll()
                         // VNPay IPN callback — không cần auth (VNPay server gọi)
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/payment/ipn", "/payment/result").permitAll()
@@ -68,8 +71,24 @@ public class SecurityConfig {
                         // Export PDF/Excel
                         .requestMatchers("/admin/export/**").hasRole("ADMIN")
                         .requestMatchers(org.springframework.http.HttpMethod.PATCH, "/admin/orders/*/status").hasAnyRole("ADMIN", "STAFF")
+                        // Google Places search/photo dùng chung bởi ADMIN và STAFF khi tạo/sửa hotel/restaurant
+                        // Backfill ghi đè dữ liệu hàng loạt — chỉ ADMIN. Phải đứng TRƯỚC wildcard "/admin/places/**" bên dưới.
+                        .requestMatchers("/admin/places/backfill/**").hasRole("ADMIN")
+                        .requestMatchers("/admin/places/**").hasAnyRole("ADMIN", "STAFF")
                         .requestMatchers("/admin/**").hasRole("ADMIN")
                         .requestMatchers("/staff/**").hasAnyRole("ADMIN", "STAFF")
+                        // ─────────────────────────────────────────────────────────────
+                        // CÁC RULE CỤ THỂ PHẢI ĐỨNG TRƯỚC BLOCK permitAll WILDCARD BÊN DƯỚI.
+                        // Spring Security áp dụng rule KHỚP ĐẦU TIÊN — đặt sau wildcard là code chết.
+                        // ─────────────────────────────────────────────────────────────
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/hotels/*/bookings").hasAnyRole("ADMIN", "STAFF")
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/restaurants/bookings/all").hasAnyRole("ADMIN", "STAFF")
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/tours/bookings").hasAnyRole("ADMIN", "STAFF")
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/bookings/room/*").hasAnyRole("ADMIN", "STAFF")
+                        .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                "/restaurants/bookings/my", "/tours/my-bookings").authenticated()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                "/hotels/my-favorites", "/tours/my-favorites", "/restaurants/my-favorites").authenticated()
                         // Hotel & Tour: GET public, booking authenticated, POST/PUT/DELETE chỉ ADMIN hoặc STAFF
                         .requestMatchers(org.springframework.http.HttpMethod.GET,
                                 "/hotels", "/hotels/**", "/rooms", "/rooms/**", "/room/**",
@@ -82,7 +101,6 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/tour-bookings/**").authenticated()
                         // Các route USER authenticated phải đứng TRƯỚC wildcard ADMIN/STAFF để không bị shadow
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/tours/*/favorite", "/hotels/*/favorite", "/restaurants/*/favorite").authenticated()
-                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/tours/my-favorites", "/hotels/my-favorites", "/restaurants/my-favorites").authenticated()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/hotels/*/reviews", "/restaurants/*/reviews").authenticated()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/hotels/**", "/rooms/**").hasAnyRole("ADMIN", "STAFF")
                         .requestMatchers(org.springframework.http.HttpMethod.PUT, "/hotels/**", "/rooms/**").hasAnyRole("ADMIN", "STAFF")
@@ -105,10 +123,11 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.PATCH, "/tours/*/active").hasAnyRole("ADMIN", "STAFF")
                         .requestMatchers(org.springframework.http.HttpMethod.DELETE,
                                 "/tours/*", "/tours/*/itineraries/*", "/tours/*/departures/*", "/tours/*/images/*").hasAnyRole("ADMIN", "STAFF")
-                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/tour-bookings/my",
-                                "/restaurants/bookings/my").authenticated()
+                        // ("/restaurants/bookings/my" và "/restaurants/bookings/all" đã khai báo ở block phía trên,
+                        //  bắt buộc phải nằm trước wildcard permitAll "/restaurants/**")
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/tour-bookings/my").authenticated()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/tour-bookings/all",
-                                "/restaurants/bookings/all", "/bookings/all").hasAnyRole("ADMIN", "STAFF")
+                                "/bookings/all").hasAnyRole("ADMIN", "STAFF")
                         .requestMatchers(org.springframework.http.HttpMethod.PATCH, "/tour-bookings/*/cancel").authenticated()
                         .requestMatchers(org.springframework.http.HttpMethod.PATCH, "/tour-bookings/*/status").hasAnyRole("ADMIN", "STAFF")
                         .requestMatchers(org.springframework.http.HttpMethod.PATCH, "/restaurants/bookings/**").authenticated()
@@ -147,7 +166,11 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .logout(AbstractHttpConfigurer::disable)
                 .addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class)
-                .exceptionHandling(ex -> ex.authenticationEntryPoint(customAuthenticationEntryPoint));
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(customAuthenticationEntryPoint)
+                        // Thiếu handler này thì user đã đăng nhập mà không đủ quyền cũng nhận 401
+                        // thay vì 403 — FE hiểu nhầm là hết phiên và đăng xuất họ.
+                        .accessDeniedHandler(customAccessDeniedHandler));
         return http.build();
     }
 

@@ -33,6 +33,12 @@ public class Destination {
     @Column(nullable = false)
     private String city;
 
+    private String address;
+
+    private Double latitude;
+
+    private Double longitude;
+
     @Lob
     private Blob photo;
 

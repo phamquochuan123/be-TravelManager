@@ -10,6 +10,8 @@ import com.example.travelManager.service.EmailService;
 import com.example.travelManager.service.ProfileService;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import org.springframework.http.HttpStatus;
@@ -60,7 +62,7 @@ public class ProfileController {
     @PutMapping("/profile")
     public ProfileResponse updateProfile(
             @CurrentSecurityContext(expression = "authentication?.name") String email,
-            @RequestBody UpdateProfileRequest request) {
+            @Valid @RequestBody UpdateProfileRequest request) {
         return profileService.updateProfile(email, request.getName(), request.getPhone(),
                 request.getBirthDate(), request.getGender());
     }
@@ -77,7 +79,7 @@ public class ProfileController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void changePassword(
             @CurrentSecurityContext(expression = "authentication?.name") String email,
-            @RequestBody ChangePasswordRequest request) {
+            @Valid @RequestBody ChangePasswordRequest request) {
         profileService.changePassword(email, request.getCurrentPassword(), request.getNewPassword());
     }
 
@@ -92,6 +94,8 @@ public class ProfileController {
     @Data
     static class ChangePasswordRequest {
         private String currentPassword;
+        @NotBlank(message = "Mật khẩu mới không được để trống")
+        @Size(min = 6, message = "Mật khẩu phải có ít nhất 6 ký tự")
         private String newPassword;
     }
 

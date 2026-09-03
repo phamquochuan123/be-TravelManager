@@ -35,11 +35,14 @@ public class JwtUtil {
                 .collect(Collectors.toList());
         Map<String, Object> claims = new HashMap<>();
         claims.put("roles", roles);
+        // API jjwt 0.12.x: claims()/subject()/issuedAt()/expiration() thay cho setXxx() đã bỏ.
+        // Lưu ý claim "roles" chỉ để FE hiển thị — phía server lấy quyền từ DB
+        // (xem JwtRequestFilter), không tin claim này.
         return Jwts.builder()
-                .setClaims(claims)
-                .setSubject(userDetails.getUsername())
-                .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 10)) // 10h
+                .claims(claims)
+                .subject(userDetails.getUsername())
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 10)) // 10h
                 .signWith(secretKey)
                 .compact();
     }
@@ -50,11 +53,14 @@ public class JwtUtil {
     }
 
     private Claims extractAllClaims(String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(secretKey)
+        // API jjwt 0.12.x: parser().verifyWith().parseSignedClaims().getPayload()
+        // thay cho parserBuilder()/setSigningKey()/parseClaimsJws()/getBody().
+        // Chữ ký vẫn được verify bắt buộc, token sai chữ ký ném JwtException như cũ.
+        return Jwts.parser()
+                .verifyWith(secretKey)
                 .build()
-                .parseClaimsJws(token)
-                .getBody();
+                .parseSignedClaims(token)
+                .getPayload();
     }
 
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {

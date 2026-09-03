@@ -31,6 +31,10 @@ public class Hotel {
 
     private String city;
 
+    private Double latitude;
+
+    private Double longitude;
+
     private int starRating;
 
     @Enumerated(EnumType.STRING)

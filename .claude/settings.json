@@ -17,7 +17,20 @@
       "Bash(curl -s 'http://localhost:8081/api/v1/admin/tours?page=0&size=50' -H 'Authorization: Bearer eyJhbGciOiJIUzUxMiJ9.eyJyb2xlcyI6WyJST0xFX0FETUlOIl0sInN1YiI6ImFkbWluQGdtYWlsLmNvbSIsImlhdCI6MTc4MDY0ODM5NywiZXhwIjoxNzgwNjg0Mzk3fQ.jYSX_n_iNUGHIuay6Gzn1IChjAUgk-N3C3YDhsRcBcFOlw6NFsaFWxNc0bGVo_phVW3WptXudGTAy6KR08Elag' -o C:/temp/tours.json)",
       "Bash(curl -s -X POST \"http://localhost:8081/api/v1/login\" -H \"Content-Type: application/json\" -d '{\"email\":\"admin@gmail.com\",\"passWord\":\"30112004\"}')",
       "Bash(node -e \"const jsPDF = require\\('D:/springjava/travel/react travel manager/node_modules/jspdf'\\); console.log\\(Object.keys\\(jsPDF\\).slice\\(0,10\\)\\)\")",
-      "Bash(node -e \"const j = require\\('D:/springjava/travel/react travel manager/node_modules/jspdf'\\); console.log\\('jsPDF key:', typeof j.jsPDF, 'default key:', typeof j.default\\)\")"
+      "Bash(node -e \"const j = require\\('D:/springjava/travel/react travel manager/node_modules/jspdf'\\); console.log\\('jsPDF key:', typeof j.jsPDF, 'default key:', typeof j.default\\)\")",
+      "Bash(grep -E \"\\\\.\\(java|class\\)$\")",
+      "Bash(ls -la '/mnt/d/springjava/travel/react travel manager/src/api/')",
+      "Read(//mnt/d/springjava/travel/react travel manager/src/**)",
+      "Bash(del \"d:\\\\springjava\\\\travel\\\\travel\\\\src\\\\main\\\\java\\\\com\\\\example\\\\travelManager\\\\config\\\\TomcatConfig.java\")",
+      "Bash(./gradlew compileJava -q)",
+      "Bash(xargs -I{} sh -c 'echo ==={}===; cat \"{}\"')",
+      "Bash(./gradlew test *)",
+      "Bash(python3 -c \"import yaml,sys; yaml.safe_load\\(open\\('docker-compose.yml', encoding='utf-8'\\)\\)\")",
+      "Bash(python -c \"import yaml,sys; yaml.safe_load\\(open\\('docker-compose.yml', encoding='utf-8'\\)\\)\")",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(./gradlew clean *)",
+      "Bash(grep -v \"\\\\.claude\\\\\\\\\\\\\\\\skills\\\\|\\\\.agents\\\\\\\\\\\\\\\\skills\" -A0)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8081/api/v1/tours --max-time 3)"
     ]
   }
 }

@@ -1,16 +1,11 @@
 package com.example.travelManager.controller.restaurant;
 
 import com.example.travelManager.domain.UserEntity;
-import com.example.travelManager.domain.restaurant.Restaurant;
-import com.example.travelManager.domain.restaurant.RestaurantBooking;
 import com.example.travelManager.domain.restaurant.RestaurantReview;
 import com.example.travelManager.exception.ResourceNotFoundException;
 import com.example.travelManager.repository.UserRepository;
-import com.example.travelManager.repository.restaurant.RestaurantBookingRepository;
-import com.example.travelManager.repository.restaurant.RestaurantRepository;
-import com.example.travelManager.repository.restaurant.RestaurantReviewRepository;
+import com.example.travelManager.service.restaurant.RestaurantReviewService;
 import com.example.travelManager.util.SecurityUtil;
-import com.example.travelManager.util.constant.restaurant.RestaurantBookingStatus;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -31,26 +26,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @RequiredArgsConstructor
 public class RestaurantReviewController {
 
-    private final RestaurantReviewRepository reviewRepository;
-    private final RestaurantRepository restaurantRepository;
-    private final RestaurantBookingRepository bookingRepository;
+    private final RestaurantReviewService reviewService;
     private final UserRepository userRepository;
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @GetMapping
     public ResponseEntity<List<ReviewResponse>> getReviews(@PathVariable("restaurantId") Long restaurantId) {
-        List<ReviewResponse> reviews = reviewRepository.findByRestaurantId(restaurantId)
-                .stream()
-                .filter(r -> !r.isHidden())
-                .map(this::toResponse)
-                .toList();
-        return ResponseEntity.ok(reviews);
+        return ResponseEntity.ok(
+                reviewService.getVisibleReviews(restaurantId).stream().map(this::toResponse).toList());
     }
 
     @GetMapping("/all")
     public ResponseEntity<List<ReviewResponse>> getAllReviews(@PathVariable("restaurantId") Long restaurantId) {
         return ResponseEntity.ok(
-                reviewRepository.findByRestaurantId(restaurantId).stream().map(this::toResponse).toList());
+                reviewService.getAllReviews(restaurantId).stream().map(this::toResponse).toList());
     }
 
     @PostMapping
@@ -58,45 +47,14 @@ public class RestaurantReviewController {
             @PathVariable("restaurantId") Long restaurantId,
             @Valid @RequestBody ReviewRequest request) {
 
-        String email = SecurityUtil.getCurrentUserLogin()
-                .orElseThrow(() -> new RuntimeException("Not authenticated"));
+        String email = SecurityUtil.getCurrentUserLoginOrThrow();
         UserEntity user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        Restaurant restaurant = restaurantRepository.findById(restaurantId)
-                .orElseThrow(() -> new ResourceNotFoundException("Restaurant not found: " + restaurantId));
+        RestaurantReview review = reviewService.createReview(restaurantId, request.getConfirmationCode(), user,
+                request.getRating(), request.getComment(), request.getImages());
 
-        RestaurantBooking booking = bookingRepository.findByConfirmationCode(request.getConfirmationCode())
-                .orElseThrow(() -> new ResourceNotFoundException("Booking not found"));
-
-        if (!booking.getRestaurant().getId().equals(restaurantId)) {
-            throw new IllegalArgumentException("Booking này không thuộc nhà hàng " + restaurantId);
-        }
-        if (booking.getUser() == null || booking.getUser().getId() != user.getId()) {
-            throw new IllegalArgumentException("Booking này không thuộc về bạn");
-        }
-        if (booking.getStatus() != RestaurantBookingStatus.COMPLETED) {
-            throw new IllegalStateException("Chỉ được đánh giá sau khi booking hoàn thành");
-        }
-        if (reviewRepository.existsByBookingId(booking.getId())) {
-            throw new IllegalStateException("Bạn đã đánh giá nhà hàng này rồi");
-        }
-
-        RestaurantReview review = new RestaurantReview();
-        review.setRestaurant(restaurant);
-        review.setUser(user);
-        review.setBooking(booking);
-        review.setRating(request.getRating());
-        review.setComment(request.getComment());
-        review.setHidden(true);
-        review.setStatus("PENDING");
-        if (request.getImages() != null && !request.getImages().isEmpty()) {
-            try { review.setImages(MAPPER.writeValueAsString(request.getImages())); }
-            catch (Exception ignored) {}
-        }
-
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(toResponse(reviewRepository.save(review)));
+        return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(review));
     }
 
     @PatchMapping("/{reviewId}/reply")
@@ -104,44 +62,29 @@ public class RestaurantReviewController {
             @PathVariable("restaurantId") Long restaurantId,
             @PathVariable("reviewId") Long reviewId,
             @RequestBody Map<String, String> body) {
-        RestaurantReview review = findReviewInRestaurant(restaurantId, reviewId);
-        review.setAdminReply(body.get("reply"));
-        return ResponseEntity.ok(toResponse(reviewRepository.save(review)));
+        return ResponseEntity.ok(toResponse(reviewService.reply(restaurantId, reviewId, body.get("reply"))));
     }
 
     @PatchMapping("/{reviewId}/hide")
     public ResponseEntity<ReviewResponse> hideReview(
             @PathVariable("restaurantId") Long restaurantId,
             @PathVariable("reviewId") Long reviewId) {
-        RestaurantReview review = findReviewInRestaurant(restaurantId, reviewId);
-        review.setHidden(true);
-        return ResponseEntity.ok(toResponse(reviewRepository.save(review)));
+        return ResponseEntity.ok(toResponse(reviewService.setHidden(restaurantId, reviewId, true)));
     }
 
     @PatchMapping("/{reviewId}/unhide")
     public ResponseEntity<ReviewResponse> unhideReview(
             @PathVariable("restaurantId") Long restaurantId,
             @PathVariable("reviewId") Long reviewId) {
-        RestaurantReview review = findReviewInRestaurant(restaurantId, reviewId);
-        review.setHidden(false);
-        return ResponseEntity.ok(toResponse(reviewRepository.save(review)));
+        return ResponseEntity.ok(toResponse(reviewService.setHidden(restaurantId, reviewId, false)));
     }
 
     @DeleteMapping("/{reviewId}")
     public ResponseEntity<Void> deleteReview(
             @PathVariable("restaurantId") Long restaurantId,
             @PathVariable("reviewId") Long reviewId) {
-        reviewRepository.delete(findReviewInRestaurant(restaurantId, reviewId));
+        reviewService.delete(restaurantId, reviewId);
         return ResponseEntity.noContent().build();
-    }
-
-    private RestaurantReview findReviewInRestaurant(Long restaurantId, Long reviewId) {
-        RestaurantReview review = reviewRepository.findById(reviewId)
-                .orElseThrow(() -> new ResourceNotFoundException("Review not found: " + reviewId));
-        if (!review.getRestaurant().getId().equals(restaurantId)) {
-            throw new IllegalArgumentException("Review này không thuộc nhà hàng " + restaurantId);
-        }
-        return review;
     }
 
     private ReviewResponse toResponse(RestaurantReview r) {
@@ -186,4 +129,3 @@ public class RestaurantReviewController {
         private Instant createdAt;
     }
 }
-

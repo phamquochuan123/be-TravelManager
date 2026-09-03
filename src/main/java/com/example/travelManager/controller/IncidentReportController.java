@@ -13,6 +13,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -24,6 +25,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @RestController
 @RequestMapping("/incident-reports")
 @RequiredArgsConstructor
@@ -51,8 +53,7 @@ public class IncidentReportController {
             return ResponseEntity.badRequest().build();
         }
 
-        String email = SecurityUtil.getCurrentUserLogin()
-                .orElseThrow(() -> new RuntimeException("Not authenticated"));
+        String email = SecurityUtil.getCurrentUserLoginOrThrow();
         UserEntity reporter = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
@@ -91,7 +92,9 @@ public class IncidentReportController {
             String depDate = departure.getDepartureDate() != null ? departure.getDepartureDate().toString() : "N/A";
             emailService.sendIncidentReportNotification(
                     reporter.getName(), tourName, depDate, incidentType, description);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.warn("Gửi email cảnh báo sự cố thất bại (reportId={}): {}", saved.getId(), e.getMessage());
+        }
 
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(saved));
     }
@@ -101,8 +104,7 @@ public class IncidentReportController {
      */
     @GetMapping("/my")
     public ResponseEntity<List<ReportResponse>> myReports() {
-        String email = SecurityUtil.getCurrentUserLogin()
-                .orElseThrow(() -> new RuntimeException("Not authenticated"));
+        String email = SecurityUtil.getCurrentUserLoginOrThrow();
         return ResponseEntity.ok(
                 reportRepository.findByReporterEmailOrderByCreatedAtDesc(email)
                         .stream().map(this::toResponse).toList());

@@ -1,12 +1,10 @@
 package com.example.travelManager.controller.tour;
 
-import com.example.travelManager.domain.tour.Tour;
 import com.example.travelManager.domain.tour.TourSeasonalPrice;
-import com.example.travelManager.exception.ResourceNotFoundException;
-import com.example.travelManager.repository.tour.TourRepository;
-import com.example.travelManager.repository.tour.TourSeasonalPriceRepository;
+import com.example.travelManager.service.tour.TourSeasonalPriceService;
 import com.example.travelManager.util.constant.tour.SeasonType;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
@@ -24,34 +22,22 @@ import java.util.List;
 @RequiredArgsConstructor
 public class TourSeasonalPriceController {
 
-    private final TourSeasonalPriceRepository seasonalPriceRepository;
-    private final TourRepository tourRepository;
+    private final TourSeasonalPriceService seasonalPriceService;
 
     @GetMapping
     public ResponseEntity<List<SeasonalPriceResponse>> getByTour(@PathVariable("tourId") Long tourId) {
         return ResponseEntity.ok(
-                seasonalPriceRepository.findByTourId(tourId)
-                        .stream().map(this::toResponse).toList());
+                seasonalPriceService.getByTour(tourId).stream().map(this::toResponse).toList());
     }
 
     @PostMapping
     public ResponseEntity<SeasonalPriceResponse> create(
             @PathVariable("tourId") Long tourId,
             @Valid @RequestBody SeasonalPriceRequest request) {
-        Tour tour = tourRepository.findById(tourId)
-                .orElseThrow(() -> new ResourceNotFoundException("Tour not found: " + tourId));
-
-        TourSeasonalPrice price = new TourSeasonalPrice();
-        price.setTour(tour);
-        price.setSeasonName(request.getSeasonName());
-        price.setStartDate(request.getStartDate());
-        price.setEndDate(request.getEndDate());
-        price.setSeasonType(request.getSeasonType());
-        price.setPriceAdult(request.getPriceAdult());
-        price.setPriceChild(request.getPriceChild());
-
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(toResponse(seasonalPriceRepository.save(price)));
+        TourSeasonalPrice price = seasonalPriceService.create(tourId, request.getSeasonName(),
+                request.getStartDate(), request.getEndDate(), request.getSeasonType(),
+                request.getPriceAdult(), request.getPriceChild());
+        return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(price));
     }
 
     @PutMapping("/{priceId}")
@@ -59,31 +45,18 @@ public class TourSeasonalPriceController {
             @PathVariable("tourId") Long tourId,
             @PathVariable("priceId") Long priceId,
             @Valid @RequestBody SeasonalPriceRequest request) {
-        TourSeasonalPrice price = findInTour(tourId, priceId);
-        price.setSeasonName(request.getSeasonName());
-        price.setStartDate(request.getStartDate());
-        price.setEndDate(request.getEndDate());
-        price.setSeasonType(request.getSeasonType());
-        price.setPriceAdult(request.getPriceAdult());
-        price.setPriceChild(request.getPriceChild());
-        return ResponseEntity.ok(toResponse(seasonalPriceRepository.save(price)));
+        TourSeasonalPrice price = seasonalPriceService.update(tourId, priceId, request.getSeasonName(),
+                request.getStartDate(), request.getEndDate(), request.getSeasonType(),
+                request.getPriceAdult(), request.getPriceChild());
+        return ResponseEntity.ok(toResponse(price));
     }
 
     @DeleteMapping("/{priceId}")
     public ResponseEntity<Void> delete(
             @PathVariable("tourId") Long tourId,
             @PathVariable("priceId") Long priceId) {
-        seasonalPriceRepository.delete(findInTour(tourId, priceId));
+        seasonalPriceService.delete(tourId, priceId);
         return ResponseEntity.noContent().build();
-    }
-
-    private TourSeasonalPrice findInTour(Long tourId, Long priceId) {
-        TourSeasonalPrice price = seasonalPriceRepository.findById(priceId)
-                .orElseThrow(() -> new ResourceNotFoundException("SeasonalPrice not found: " + priceId));
-        if (!price.getTour().getId().equals(tourId)) {
-            throw new IllegalArgumentException("Seasonal price này không thuộc tour " + tourId);
-        }
-        return price;
     }
 
     private SeasonalPriceResponse toResponse(TourSeasonalPrice p) {
@@ -112,8 +85,10 @@ public class TourSeasonalPriceController {
         private LocalDate endDate;
         private SeasonType seasonType;
         @NotNull
+        @DecimalMin(value = "0", inclusive = false)
         private BigDecimal priceAdult;
         @NotNull
+        @DecimalMin(value = "0", inclusive = false)
         private BigDecimal priceChild;
     }
 
@@ -130,4 +105,3 @@ public class TourSeasonalPriceController {
         private Boolean isActive;
     }
 }
-
