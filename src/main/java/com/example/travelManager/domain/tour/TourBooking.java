@@ -2,12 +2,15 @@ package com.example.travelManager.domain.tour;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 import com.example.travelManager.domain.UserEntity;
 import com.example.travelManager.domain.hotel.BookedRoom;
 import com.example.travelManager.domain.restaurant.RestaurantBooking;
 import com.example.travelManager.util.constant.tour.BookingStatus;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -18,6 +21,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -58,9 +62,19 @@ public class TourBooking {
     @JoinColumn(name = "booked_room_id")
     private BookedRoom bookedRoom; // nullable - chi co khi tour >= 2 ngay va khach chon hotel
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "restaurant_booking_id")
-    private RestaurantBooking restaurantBooking; // nullable - tuy chon
+    /**
+     * Các bữa ăn kèm theo đơn tour, rỗng nếu khách không chọn nhà hàng nào.
+     *
+     * Trước đây là một quan hệ đơn (cột tour_bookings.restaurant_booking_id) nên mỗi
+     * đơn chỉ kèm được một bữa; chọn nhà hàng thứ hai là âm thầm thay thế nhà hàng
+     * thứ nhất. Khoá ngoại nay nằm bên restaurant_bookings.tour_booking_id.
+     *
+     * orphanRemoval để huỷ một bữa khỏi danh sách là xoá luôn bản ghi, không để lại
+     * lượt đặt bàn mồ côi vẫn chiếm chỗ của nhà hàng.
+     */
+    @OneToMany(mappedBy = "tourBooking", fetch = FetchType.LAZY,
+            cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<RestaurantBooking> restaurantBookings = new ArrayList<>();
 
     // thong tin lien he
     private String contactName;

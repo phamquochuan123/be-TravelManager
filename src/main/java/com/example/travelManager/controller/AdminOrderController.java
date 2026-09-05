@@ -169,13 +169,18 @@ public class AdminOrderController {
         }
 
         // Restaurant booking info
-        if (b.getRestaurantBooking() != null) {
-            RestaurantBooking rb = b.getRestaurantBooking();
+        for (RestaurantBooking rb : b.getRestaurantBookings()) {
+            BuaAn bua = new BuaAn();
             if (rb.getRestaurant() != null) {
-                o.setRestaurantName(rb.getRestaurant().getName());
+                bua.setRestaurantName(rb.getRestaurant().getName());
             }
-            o.setRestaurantBookingDate(b.getRestaurantBooking().getBookingDate() != null
-                    ? b.getRestaurantBooking().getBookingDate().toString() : null);
+            bua.setBookingDate(rb.getBookingDate() != null ? rb.getBookingDate().toString() : null);
+            bua.setBookingTime(rb.getBookingTime() != null ? rb.getBookingTime().toString() : null);
+            var khung = com.example.travelManager.util.constant.restaurant.MealSlot
+                    .cuaGio(rb.getBookingTime());
+            if (khung != null) bua.setMealSlotLabel(khung.nhan());
+            bua.setGuestCount(rb.getGuestCount());
+            o.getRestaurants().add(bua);
         }
 
         o.setPackageHotelPrice(b.getPackageHotelPrice());
@@ -267,12 +272,21 @@ public class AdminOrderController {
         private String checkInDate;
         private String checkOutDate;
         private BigDecimal packageHotelPrice;
-        // Tour package — restaurant info
-        private String restaurantName;
-        private String restaurantBookingDate;
+        // Tour package — restaurant info. Danh sách vì một đơn tour kèm được nhiều bữa.
+        private java.util.List<BuaAn> restaurants = new java.util.ArrayList<>();
         private BigDecimal packageRestaurantPrice;
         // Tour package — discount
         private Double packageDiscountPercent;
+    }
+
+    /** Một bữa ăn kèm trong đơn tour, hiển thị ở trang quản trị đơn hàng. */
+    @Data
+    public static class BuaAn {
+        private String restaurantName;
+        private String bookingDate;
+        private String bookingTime;
+        private String mealSlotLabel; // "Sáng" / "Trưa" / "Tối"
+        private int guestCount;
     }
 }
 

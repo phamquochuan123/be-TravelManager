@@ -45,6 +45,9 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     List<Payment> findByStatusAndCreatedAtBefore(Payment.PaymentStatus status, Instant cutoff);
 
+    /** Dùng cho thống kê doanh thu — chỉ giao dịch đã thu tiền thành công mới tính. */
+    List<Payment> findByStatusOrderByCreatedAtDesc(Payment.PaymentStatus status);
+
     @Modifying
     @Query("UPDATE Payment p SET p.status = :newStatus, p.responseCode = :responseCode, " +
            "p.transactionNo = :transactionNo, p.bankCode = :bankCode " +

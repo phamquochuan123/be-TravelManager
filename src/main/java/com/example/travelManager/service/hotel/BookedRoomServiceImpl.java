@@ -39,6 +39,15 @@ public class BookedRoomServiceImpl implements IBookedRoomService {
             throw new IllegalStateException("Phòng đang bảo trì, không thể đặt");
         }
 
+        // Sức chứa phòng: nhà hàng và tour đều có kiểm tra tương ứng (capacity / decrementSlot),
+        // riêng khách sạn thì trước đây không kiểm — đặt phòng 2 người cho 10 khách vẫn qua.
+        int soKhach = request.getNumOfAdults() + request.getNumOfChildren();
+        if (room.getMaxGuests() > 0 && soKhach > room.getMaxGuests()) {
+            throw new IllegalArgumentException(
+                    "Phòng này chỉ ở tối đa " + room.getMaxGuests() + " khách, bạn đang đặt cho "
+                            + soKhach + " khách. Vui lòng chọn phòng khác hoặc đặt thêm phòng.");
+        }
+
         // Check-in lúc 14:00 — phải đặt trước ít nhất 12 tiếng (trước 02:00 cùng ngày)
         LocalDateTime checkInAt14 = request.getCheckInDate().atTime(14, 0);
         LocalDateTime bookingDeadline = checkInAt14.minusHours(12); // = 02:00 cùng ngày check-in
@@ -126,14 +135,22 @@ public class BookedRoomServiceImpl implements IBookedRoomService {
         BookedRoom booking = bookedRoomRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + bookingId));
 
-        Room room = booking.getRoom();
-        bookedRoomRepository.deleteById(bookingId);
+        if (booking.getStatus() == HotelBookingStatus.CANCELLED) {
+            throw new IllegalStateException("Booking đã được hủy trước đó");
+        }
 
-        // Only free the room if no other bookings remain for it
-        boolean hasOtherBookings = bookedRoomRepository.existsByRoom_Id(room.getId());
-        if (!hasOtherBookings) {
+        // Huỷ MỀM, không xoá bản ghi. Cách cũ gọi deleteById() nên mất sạch lịch sử đặt phòng,
+        // và nếu booking đã thanh toán thì bản ghi payments trỏ tới booking_id này thành mồ côi,
+        // đối soát tiền không ra. Đây cũng là cách module tour đang làm (TourBookingController.cancel).
+        // Việc kiểm tra trùng lịch đã loại CANCELLED sẵn nên phòng vẫn được giải phóng đúng.
+        booking.setStatus(HotelBookingStatus.CANCELLED);
+        bookedRoomRepository.save(booking);
+
+        Room room = booking.getRoom();
+        boolean conBookingKhac = bookedRoomRepository
+                .existsByRoom_IdAndStatusNot(room.getId(), HotelBookingStatus.CANCELLED);
+        if (!conBookingKhac) {
             room.setStatus(RoomStatus.AVAILABLE);
-            room.setBooked(false);
             roomRepository.save(room);
         }
     }

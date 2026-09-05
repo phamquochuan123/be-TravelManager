@@ -48,6 +48,7 @@ public class RestaurantController {
 
     private final IRestaurantService restaurantService;
     private final RestaurantRepository restaurantRepository;
+    private final com.example.travelManager.repository.restaurant.MenuItemRepository menuItemRepository;
     private final RestaurantBookingRepository bookingRepository;
     private final RestaurantFavoriteService favoriteService;
     private final UserRepository userRepository;
@@ -93,7 +94,11 @@ public class RestaurantController {
 
     @GetMapping("/{id}")
     public ResponseEntity<RestaurantResponse> getById(@PathVariable("id") Long id) {
-        return ResponseEntity.ok(toResponse(restaurantService.getById(id)));
+        RestaurantResponse res = toResponse(restaurantService.getById(id));
+        res.setMenuItems(
+                menuItemRepository.findByRestaurantIdAndAvailableTrueOrderBySortOrderAscIdAsc(id)
+                        .stream().map(this::toMenuItemResponse).toList());
+        return ResponseEntity.ok(res);
     }
 
     @PutMapping("/{id}")
@@ -306,6 +311,28 @@ public class RestaurantController {
         res.setActive(r.isActive());
         res.setAverageRating(r.getAverageRating());
         res.setPhoto(photoBytes);
+        res.setLatitude(r.getLatitude());
+        res.setLongitude(r.getLongitude());
+        res.setPricePerPerson(r.getPricePerPerson());
+        return res;
+    }
+
+    private com.example.travelManager.domain.response.restaurant.MenuItemResponse toMenuItemResponse(
+            com.example.travelManager.domain.restaurant.MenuItem m) {
+        var res = new com.example.travelManager.domain.response.restaurant.MenuItemResponse();
+        res.setId(m.getId());
+        res.setName(m.getName());
+        res.setDescription(m.getDescription());
+        res.setPrice(m.getPrice());
+        res.setCategory(m.getCategory());
+        res.setBestSeller(m.isBestSeller());
+        res.setNewItem(m.isNewItem());
+        if (m.getPhoto() != null) {
+            try {
+                byte[] bytes = m.getPhoto().getBytes(1, (int) m.getPhoto().length());
+                res.setPhoto(java.util.Base64.getEncoder().encodeToString(bytes));
+            } catch (SQLException ignored) {}
+        }
         return res;
     }
 

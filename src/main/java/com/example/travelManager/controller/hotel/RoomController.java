@@ -42,6 +42,9 @@ public class RoomController {
             @RequestParam("roomType") String roomType,
             @RequestParam("roomPrice") BigDecimal roomPrice) throws IOException, SQLException {
 
+        roomType = com.example.travelManager.util.InputValidator.ten(roomType, "Loại phòng");
+        com.example.travelManager.util.InputValidator.duong(roomPrice, "Giá phòng");
+
         Room savedRoom = roomService.addNewRoom(photo, roomType, roomPrice);
         RoomResponse response = new RoomResponse(savedRoom.getId(), savedRoom.getRoomType(),
                 savedRoom.getRoomPrice());
@@ -79,6 +82,14 @@ public class RoomController {
             @RequestParam(value = "roomType", required = false) String roomType,
             @RequestParam(value = "roomPrice", required = false) BigDecimal roomPrice,
             @RequestParam(value = "photo", required = false) MultipartFile photo) throws IOException, SQLException {
+        // Cả hai đều không bắt buộc khi sửa — chỉ kiểm cái nào thực sự được gửi lên.
+        if (roomType != null) {
+            roomType = com.example.travelManager.util.InputValidator.ten(roomType, "Loại phòng");
+        }
+        if (roomPrice != null) {
+            com.example.travelManager.util.InputValidator.duong(roomPrice, "Giá phòng");
+        }
+
         byte[] photoBytes = photo != null && !photo.isEmpty() ? photo.getBytes()
                 : roomService.getRoomPhotoByRoomId(roomId);
         Room theRoom = roomService.updateRoom(roomId, roomType, roomPrice, photoBytes);

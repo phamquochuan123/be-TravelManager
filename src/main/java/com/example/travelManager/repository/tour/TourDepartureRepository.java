@@ -1,6 +1,7 @@
 package com.example.travelManager.repository.tour;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 
 import org.springframework.data.domain.Page;
@@ -11,6 +12,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.example.travelManager.domain.tour.TourDeparture;
+import com.example.travelManager.util.constant.tour.TourDepartureStatus;
 
 public interface TourDepartureRepository extends JpaRepository<TourDeparture, Long> {
 
@@ -28,6 +30,21 @@ public interface TourDepartureRepository extends JpaRepository<TourDeparture, Lo
 
     @Query("SELECT d.tour.id, COUNT(d) FROM TourDeparture d WHERE d.tour.id IN :tourIds GROUP BY d.tour.id")
     List<Object[]> countGroupedByTourIds(@Param("tourIds") List<Long> tourIds);
+
+    /**
+     * Các chuyến mà TourDepartureScheduler còn phải theo dõi trạng thái.
+     * Chuyến đã COMPLETED/CANCELLED là điểm dừng nên không cần load lại mỗi giờ.
+     * JOIN FETCH tour vì việc suy ra trạng thái cần durationDays của tour.
+     */
+    @Query("SELECT d FROM TourDeparture d JOIN FETCH d.tour WHERE d.status NOT IN :ketThuc")
+    List<TourDeparture> findChuyenChuaKetThuc(
+            @Param("ketThuc") Collection<TourDepartureStatus> ketThuc);
+
+    /** Ngày khởi hành đã có từ mốc :tuNgay trở đi — để không sinh trùng chuyến. */
+    @Query("SELECT d.departureDate FROM TourDeparture d " +
+           "WHERE d.tour.id = :tourId AND d.departureDate >= :tuNgay")
+    List<LocalDate> findNgayKhoiHanhTuNgay(@Param("tourId") Long tourId,
+                                           @Param("tuNgay") LocalDate tuNgay);
 
     @Modifying
     @Query("UPDATE TourDeparture d SET d.availableSlots = d.availableSlots - :needed " +

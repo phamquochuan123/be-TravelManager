@@ -29,6 +29,17 @@ public class RestaurantBooking {
     @JoinColumn(name = "user_id")
     private UserEntity user;
 
+    /**
+     * Đơn tour đã kèm lượt đặt bàn này, null nếu khách đặt bàn lẻ.
+     *
+     * Khoá ngoại nằm ở BÊN NÀY chứ không phải tour_bookings.restaurant_booking_id như
+     * trước: một đơn tour giờ kèm được nhiều bữa, mà cột đơn lẻ bên tour_bookings chỉ
+     * chứa nổi một. Xem migrate_tour_multi_restaurant.sql.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "tour_booking_id")
+    private com.example.travelManager.domain.tour.TourBooking tourBooking;
+
     @Column(nullable = false)
     private LocalDate bookingDate;
 

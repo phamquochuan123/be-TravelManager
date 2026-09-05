@@ -73,6 +73,22 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse(400, ex.getMessage()));
     }
 
+    /**
+     * Dữ liệu vi phạm ràng buộc của DB (vượt độ dài cột, trùng khoá, thiếu NOT NULL).
+     *
+     * Không có handler này thì mọi trường hợp đó rơi xuống handler Exception cuối
+     * cùng và trả 500 — người dùng nhập sai lại thấy "lỗi hệ thống". Không đẩy
+     * ex.getMessage() ra ngoài vì nó lộ tên bảng, tên cột và câu SQL.
+     */
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrity(
+            org.springframework.dao.DataIntegrityViolationException ex) {
+        log.warn("Vi pham rang buoc du lieu: {}", ex.getMostSpecificCause().getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse(400,
+                        "Dữ liệu không hợp lệ: có trường vượt quá độ dài cho phép hoặc bị trùng."));
+    }
+
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ErrorResponse> handleIllegalState(IllegalStateException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)

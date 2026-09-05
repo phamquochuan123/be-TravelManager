@@ -7,6 +7,7 @@ import com.example.travelManager.repository.UserRepository;
 import com.example.travelManager.repository.tour.TourBookingRepository;
 import com.example.travelManager.repository.tour.TourDepartureRepository;
 import com.example.travelManager.repository.tour.TourRepository;
+import com.example.travelManager.util.InputValidator;
 import com.example.travelManager.util.constant.tour.TourDepartureStatus;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,21 @@ public class AdminScheduleController {
     private final TourRepository tourRepository;
     private final UserRepository userRepository;
     private final TourBookingRepository bookingRepository;
+    private final com.example.travelManager.service.tour.TourDepartureScheduler departureScheduler;
+
+    /**
+     * Chạy ngay 2 job lịch khởi hành thay vì chờ tới lượt định kỳ (trạng thái mỗi
+     * giờ, sinh lịch 02:30 hằng ngày). Dùng sau khi vừa sửa cấu hình lặp bằng SQL,
+     * hoặc để demo mà không phải đợi. Đã nằm dưới /admin/** nên chỉ ADMIN gọi được.
+     */
+    @PostMapping("/refresh")
+    public ResponseEntity<Map<String, Object>> refresh() {
+        int soChuyenDoiTrangThai = departureScheduler.capNhatTrangThaiChuyen();
+        int soChuyenMoi = departureScheduler.sinhLichKhoiHanhTheoMau();
+        return ResponseEntity.ok(Map.of(
+                "soChuyenDoiTrangThai", soChuyenDoiTrangThai,
+                "soChuyenMoiSinhRa", soChuyenMoi));
+    }
 
     @GetMapping
     public ResponseEntity<Map<String, Object>> list(
@@ -60,8 +76,9 @@ public class AdminScheduleController {
                 .orElseThrow(() -> new ResourceNotFoundException("Tour not found"));
         TourDeparture d = new TourDeparture();
         d.setTour(tour);
-        d.setDepartureDate(LocalDate.parse(req.getDepartureDate()));
+        d.setDepartureDate(docNgayKhoiHanh(req.getDepartureDate(), true));
         int slots = req.getMaxSlots() > 0 ? req.getMaxSlots() : tour.getMaxSlots();
+        InputValidator.trongKhoang(slots, 1, 100_000, "Số chỗ");
         d.setMaxSlots(slots);
         d.setAvailableSlots(slots);
         d.setStatus(parseStatus(req.getStatus()));
@@ -76,9 +93,12 @@ public class AdminScheduleController {
         TourDeparture d = departureRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Schedule not found"));
         if (req.getDepartureDate() != null) {
-            d.setDepartureDate(LocalDate.parse(req.getDepartureDate()));
+            // Cho phép sửa chuyến đã qua (admin còn phải chỉnh lịch sử), chỉ chặn
+            // ngày quá khứ khi TẠO MỚI.
+            d.setDepartureDate(docNgayKhoiHanh(req.getDepartureDate(), false));
         }
         if (req.getMaxSlots() > 0) {
+            InputValidator.trongKhoang(req.getMaxSlots(), 1, 100_000, "Số chỗ");
             int bookedCount = bookingRepository.findByDepartureId(id).size();
             d.setMaxSlots(req.getMaxSlots());
             d.setAvailableSlots(Math.max(0, req.getMaxSlots() - bookedCount));
@@ -124,6 +144,28 @@ public class AdminScheduleController {
             }
         }
         return r;
+    }
+
+    /**
+     * Đọc ngày khởi hành. LocalDate.parse trần sẽ ném DateTimeParseException và
+     * rơi xuống handler cuối cùng thành lỗi 500 — admin gõ sai định dạng không
+     * đáng nhận lỗi hệ thống.
+     */
+    private LocalDate docNgayKhoiHanh(String giaTri, boolean chanNgayQuaKhu) {
+        if (giaTri == null || giaTri.isBlank()) {
+            throw new IllegalArgumentException("Ngày khởi hành không được để trống");
+        }
+        LocalDate ngay;
+        try {
+            ngay = LocalDate.parse(giaTri.trim());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Ngày khởi hành phải theo định dạng yyyy-MM-dd");
+        }
+        if (chanNgayQuaKhu && ngay.isBefore(LocalDate.now())) {
+            throw new IllegalArgumentException(
+                    "Ngày khởi hành (" + ngay + ") không được nằm trong quá khứ");
+        }
+        return ngay;
     }
 
     private TourDepartureStatus parseStatus(String s) {

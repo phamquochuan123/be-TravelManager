@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.example.travelManager.util.constant.tour.TourRecurrenceType;
 import com.example.travelManager.util.constant.tour.TourStatus;
 import com.example.travelManager.util.constant.tour.TourType;
 import jakarta.persistence.CascadeType;
@@ -54,6 +55,21 @@ public class Tour {
     private int maxSlots;       // suc chua toi da
 
     private Double packageDiscountPercent; // % giam gia khi dat theo tour package
+
+    // ── Lịch khởi hành lặp ───────────────────────────────────────
+    // TourDepartureScheduler đọc 3 cột này để tự sinh chuyến mới, nhờ đó lịch
+    // không cạn dần rồi khiến trang chi tiết hiện "Chưa có lịch khởi hành".
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private TourRecurrenceType recurrenceType = TourRecurrenceType.NONE;
+
+    /** WEEKLY: "MON,FRI" — MONTHLY: "5,20". Rỗng thì tour bị bỏ qua khi sinh lịch. */
+    @Column(length = 100)
+    private String recurrenceDays;
+
+    /** Luôn giữ sẵn lịch trước bao nhiêu tháng. Null dùng mặc định của scheduler. */
+    private Integer monthsAhead;
 
     @Column(columnDefinition = "TEXT")
     private String linkedHotels;      // JSON array of linked hotel IDs

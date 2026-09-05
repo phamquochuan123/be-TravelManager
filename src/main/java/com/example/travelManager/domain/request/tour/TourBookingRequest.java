@@ -1,6 +1,6 @@
 package com.example.travelManager.domain.request.tour;
 
-import java.time.LocalTime;
+import java.util.List;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -35,7 +35,14 @@ public class TourBookingRequest {
     // Package options
     private Long roomId;         // bắt buộc nếu tour >= 2 đêm
 
-    private Long restaurantId;   // tuỳ chọn
-
-    private LocalTime restaurantBookingTime; // mặc định 12:00 nếu không truyền
+    /**
+     * Các bữa ăn kèm theo, rỗng hoặc null nếu khách không chọn nhà hàng nào.
+     *
+     * Thay cho cặp restaurantId + restaurantBookingTime đơn lẻ trước đây. @Valid để
+     * ràng buộc bên trong từng phần tử được kiểm thật — thiếu nó thì @NotNull trong
+     * RestaurantAddonRequest bị bỏ qua hoàn toàn và dữ liệu thiếu ngày sẽ lọt xuống
+     * tận tầng lưu.
+     */
+    @jakarta.validation.Valid
+    private List<RestaurantAddonRequest> restaurants;
 }

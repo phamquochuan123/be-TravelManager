@@ -186,7 +186,24 @@ public class SecurityConfig {
 
     private CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(Arrays.asList(allowedOrigins.split(",")));
+        // setAllowedOriginPatterns thay cho setAllowedOrigins: bản cũ khớp tuyệt đối nên
+        // mỗi lần Cloudflare Quick Tunnel sinh hostname mới là đăng nhập chết với
+        // "Invalid CORS request", trong khi GET vẫn chạy — trình duyệt chỉ gửi header
+        // Origin trên POST/PUT/DELETE, nên lỗi chỉ lộ ra đúng lúc bấm đăng nhập.
+        //
+        // Vì sao request cùng origin vẫn bị xét CORS: nginx nghe HTTP 8080 (TLS kết thúc
+        // ở Cloudflare edge) và app không bật server.forward-headers-strategy, nên Spring
+        // dựng URL với scheme "http" còn Origin là "https://..." — lệch scheme là đủ để
+        // bị coi là cross-origin.
+        //
+        // Dạng có ký tự đại diện (vd. https://*.trycloudflare.com) chỉ hoạt động qua
+        // setAllowedOriginPatterns; setAllowedOrigins sẽ coi đó là hostname theo nghĩa đen.
+        // .trim() vì giá trị đọc từ biến môi trường hay dính khoảng trắng sau dấu phẩy,
+        // và khoảng trắng thừa làm phép so khớp trượt mà không báo lỗi gì.
+        config.setAllowedOriginPatterns(Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList());
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         config.setAllowCredentials(true);

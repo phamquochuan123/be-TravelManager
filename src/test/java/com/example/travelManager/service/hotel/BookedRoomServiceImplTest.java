@@ -1,6 +1,7 @@
 package com.example.travelManager.service.hotel;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -31,6 +32,7 @@ import com.example.travelManager.domain.request.hotel.BookingRequest;
 import com.example.travelManager.repository.UserRepository;
 import com.example.travelManager.repository.hotel.BookedRoomRepository;
 import com.example.travelManager.repository.hotel.RoomRepository;
+import com.example.travelManager.util.constant.hotel.HotelBookingStatus;
 import com.example.travelManager.util.constant.hotel.RoomStatus;
 
 /**
@@ -138,6 +140,66 @@ class BookedRoomServiceImplTest {
                 .hasMessageContaining("đã được đặt");
 
         verify(roomRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Số khách vượt sức chứa phòng thì bị từ chối")
+    void bookRoom_tuChoiKhiVuotSucChua() {
+        room.setMaxGuests(2);
+        BookingRequest request = validRequest();
+        request.setNumOfAdults(3);
+        request.setNumOfChildren(2);
+
+        assertThatThrownBy(() -> service.bookRoom(HOTEL_ID, ROOM_ID, request, "nguoidat@example.com"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tối đa 2 khách");
+
+        verify(roomRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Đúng bằng sức chứa thì vẫn đặt được")
+    void bookRoom_chapNhanKhiVuaDuSucChua() {
+        room.setMaxGuests(2);
+        BookingRequest request = validRequest();
+        request.setNumOfAdults(2);
+        request.setNumOfChildren(0);
+
+        assertThatCode(() -> service.bookRoom(HOTEL_ID, ROOM_ID, request, "nguoidat@example.com"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Huỷ booking là đổi trạng thái CANCELLED, KHÔNG xoá bản ghi")
+    void cancelBooking_huyMemKhongXoa() {
+        BookedRoom booking = new BookedRoom();
+        booking.setBookingId(99L);
+        booking.setRoom(room);
+        booking.setStatus(HotelBookingStatus.CONFIRMED);
+        when(bookedRoomRepository.findById(99L)).thenReturn(Optional.of(booking));
+        when(bookedRoomRepository.existsByRoom_IdAndStatusNot(ROOM_ID, HotelBookingStatus.CANCELLED))
+                .thenReturn(false);
+
+        service.cancelBooking(99L);
+
+        assertThat(booking.getStatus()).isEqualTo(HotelBookingStatus.CANCELLED);
+        verify(bookedRoomRepository).save(booking);
+        // Mất bản ghi là mất lịch sử và làm mồ côi payment trỏ tới booking_id này
+        verify(bookedRoomRepository, never()).deleteById(anyLong());
+    }
+
+    @Test
+    @DisplayName("Huỷ lần hai thì báo lỗi, không huỷ lại")
+    void cancelBooking_tuChoiHuyHaiLan() {
+        BookedRoom booking = new BookedRoom();
+        booking.setBookingId(99L);
+        booking.setRoom(room);
+        booking.setStatus(HotelBookingStatus.CANCELLED);
+        when(bookedRoomRepository.findById(99L)).thenReturn(Optional.of(booking));
+
+        assertThatThrownBy(() -> service.cancelBooking(99L))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("đã được hủy");
     }
 
     @Test

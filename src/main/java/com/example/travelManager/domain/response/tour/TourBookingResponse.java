@@ -6,6 +6,9 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Data
 public class TourBookingResponse {
@@ -38,12 +41,24 @@ public class TourBookingResponse {
     private LocalDate checkInDate;
     private LocalDate checkOutDate;
 
-    // Restaurant info (nullable)
-    private Long restaurantBookingId;
-    private Long restaurantId;
-    private String restaurantName;
+    /** Các bữa ăn kèm, rỗng nếu khách không chọn nhà hàng nào. */
+    private List<BuaAn> restaurants = new ArrayList<>();
 
     private BookingStatus status;
     private String note;
     private Instant createdAt;
+
+    /** Một bữa trong đơn. Kèm nhãn bữa để giao diện khỏi tự suy ra từ giờ. */
+    @Data
+    public static class BuaAn {
+        private Long restaurantBookingId;
+        private Long restaurantId;
+        private String restaurantName;
+        private LocalDate bookingDate;
+        private LocalTime bookingTime;
+        private String mealSlot;      // SANG / TRUA / TOI
+        private String mealSlotLabel; // "Sáng" / "Trưa" / "Tối"
+        private int guestCount;
+        private String confirmationCode;
+    }
 }

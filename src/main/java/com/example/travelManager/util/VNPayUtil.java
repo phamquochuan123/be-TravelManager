@@ -8,12 +8,22 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Component
 @RequiredArgsConstructor
 public class VNPayUtil {
+
+    /** VNPay quy ước mọi mốc thời gian trong request theo giờ Việt Nam (GMT+7). */
+    private static final ZoneId MUI_GIO_VNPAY = ZoneId.of("Asia/Ho_Chi_Minh");
+    private static final DateTimeFormatter DINH_DANG_NGAY =
+            DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+
+    /** Khớp với PaymentExpiryScheduler — chỗ tự đánh FAILED payment treo quá 15 phút. */
+    private static final int SO_PHUT_CHO_THANH_TOAN = 15;
 
     private final VNPayConfig config;
 
@@ -25,9 +35,14 @@ public class VNPayUtil {
         String vnpCurrCode = "VND";
         String vnpOrderType = "other";
 
-        String createDate = new SimpleDateFormat("yyyyMMddHHmmss").format(new Date());
-        String expireDate = new SimpleDateFormat("yyyyMMddHHmmss")
-                .format(new Date(System.currentTimeMillis() + 15 * 60 * 1000)); // +15 phút
+        // VNPay đối chiếu 2 mốc này với đồng hồ GMT+7 của họ, nên PHẢI quy về
+        // giờ Việt Nam. Dùng giờ mặc định của JVM là hỏng: container chạy UTC
+        // thì vnp_ExpireDate sinh ra sớm hơn giờ VNPay 7 tiếng, và mọi giao dịch
+        // bị từ chối ngay bằng mã 15 "quá thời gian chờ thanh toán" — dù khách
+        // vừa bấm xong. Cắm cứng zone thay vì trông vào biến TZ của môi trường.
+        ZonedDateTime bayGio = ZonedDateTime.now(MUI_GIO_VNPAY);
+        String createDate = bayGio.format(DINH_DANG_NGAY);
+        String expireDate = bayGio.plusMinutes(SO_PHUT_CHO_THANH_TOAN).format(DINH_DANG_NGAY);
 
         Map<String, String> params = new TreeMap<>();
         params.put("vnp_Version", vnpVersion);

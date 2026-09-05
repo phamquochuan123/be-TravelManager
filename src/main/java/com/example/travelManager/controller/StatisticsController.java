@@ -4,7 +4,9 @@ import com.example.travelManager.domain.UserEntity;
 import com.example.travelManager.domain.restaurant.RestaurantBooking;
 import com.example.travelManager.domain.tour.Tour;
 import com.example.travelManager.domain.tour.TourBooking;
+import com.example.travelManager.domain.Payment;
 import com.example.travelManager.repository.IncidentReportRepository;
+import com.example.travelManager.repository.PaymentRepository;
 import com.example.travelManager.repository.UserRepository;
 import com.example.travelManager.repository.destination.DestinationRepository;
 import com.example.travelManager.repository.hotel.BookedRoomRepository;
@@ -34,6 +36,7 @@ import java.util.stream.Collectors;
 public class StatisticsController {
 
     private final UserRepository userRepository;
+    private final PaymentRepository paymentRepository;
     private final HotelRepository hotelRepository;
     private final BookedRoomRepository hotelBookingRepository;
     private final TourRepository tourRepository;
@@ -43,6 +46,13 @@ public class StatisticsController {
     private final RestaurantBookingRepository restaurantBookingRepository;
     private final DestinationRepository destinationRepository;
     private final IncidentReportRepository incidentReportRepository;
+
+    /** Cộng số tiền của một tập giao dịch, bỏ qua bản ghi thiếu amount. */
+    private static BigDecimal sumAmount(java.util.stream.Stream<Payment> payments) {
+        return payments.map(Payment::getAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
 
     @GetMapping("/overview")
     public ResponseEntity<OverviewResponse> overview() {
@@ -83,12 +93,15 @@ public class StatisticsController {
                 .collect(Collectors.groupingBy(b -> b.getStatus().name(), Collectors.counting()));
         res.setTourBookingsByStatus(tourByStatus);
 
-        BigDecimal tourRevenue = tourBookings.stream()
-                .filter(b -> b.getStatus() != BookingStatus.CANCELLED)
-                .map(TourBooking::getFinalPrice)
-                .filter(p -> p != null)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        res.setTourRevenue(tourRevenue);
+        // Doanh thu = TIỀN ĐÃ THỰC SỰ THU, lấy từ bảng payments với status = SUCCESS.
+        // Cách cũ cộng finalPrice của mọi booking khác CANCELLED nên tính cả booking PENDING
+        // (khách bấm đặt rồi bỏ, chưa trả đồng nào), đồng thời bỏ sót hoàn toàn doanh thu
+        // đặt phòng lẻ và đặt bàn — payments có cột booking_type nên bao trọn cả 3 loại.
+        List<Payment> successfulPayments = paymentRepository
+                .findByStatusOrderByCreatedAtDesc(Payment.PaymentStatus.SUCCESS);
+
+        res.setTourRevenue(sumAmount(successfulPayments.stream()
+                .filter(p -> "TOUR".equals(p.getBookingType()))));
 
         // Restaurant bookings
         res.setTotalRestaurantBookings((long) restaurantBookings.size());
@@ -117,19 +130,15 @@ public class StatisticsController {
                 .atStartOfDay(ZoneId.systemDefault()).toInstant();
         Instant startOfThisMonth = startOfMonth;
 
-        res.setMonthlyRevenue(tourBookings.stream()
-                .filter(b -> b.getStatus() != BookingStatus.CANCELLED
-                        && b.getCreatedAt() != null && !b.getCreatedAt().isBefore(startOfThisMonth))
-                .map(TourBooking::getFinalPrice).filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add).longValue());
+        // Doanh thu tháng cũng lấy từ payments SUCCESS, gồm cả tour + khách sạn + nhà hàng.
+        res.setMonthlyRevenue(sumAmount(successfulPayments.stream()
+                .filter(p -> p.getCreatedAt() != null
+                        && !p.getCreatedAt().isBefore(startOfThisMonth))).longValue());
 
-        res.setPreviousMonthRevenue(tourBookings.stream()
-                .filter(b -> b.getStatus() != BookingStatus.CANCELLED
-                        && b.getCreatedAt() != null
-                        && !b.getCreatedAt().isBefore(startOfPrevMonth)
-                        && b.getCreatedAt().isBefore(startOfThisMonth))
-                .map(TourBooking::getFinalPrice).filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add).longValue());
+        res.setPreviousMonthRevenue(sumAmount(successfulPayments.stream()
+                .filter(p -> p.getCreatedAt() != null
+                        && !p.getCreatedAt().isBefore(startOfPrevMonth)
+                        && p.getCreatedAt().isBefore(startOfThisMonth))).longValue());
 
         Instant startOfToday = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant();
         long todayTour = tourBookings.stream()

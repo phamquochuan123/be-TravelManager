@@ -63,6 +63,7 @@ public class TourController {
     private final UserRepository userRepository;
     private final com.example.travelManager.repository.tour.TourImageRepository imageRepository;
     private final TourFavoriteService favoriteService;
+    private final com.example.travelManager.service.tour.TourSeasonalPriceService seasonalPriceService;
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     // ── Tour CRUD ────────────────────────────────────────────────
@@ -440,9 +441,17 @@ public class TourController {
         res.setId(departure.getId());
         res.setDepartureDate(departure.getDepartureDate());
         res.setAvailableSlots(departure.getAvailableSlots());
+        res.setStatus(departure.getStatus());
         if (departure.getStaff() != null) {
             res.setStaffId(departure.getStaff().getId());
             res.setStaffName(departure.getStaff().getName());
+        }
+        // Giá thực tế của chuyến này — cùng nguồn với lúc tính tiền đặt tour,
+        // để giá khách nhìn thấy luôn khớp giá khách bị tính.
+        if (departure.getTour() != null) {
+            var gia = seasonalPriceService.resolvePrice(departure.getTour(), departure.getDepartureDate());
+            res.setPriceAdult(gia.adult());
+            res.setPriceChild(gia.child());
         }
         return res;
     }

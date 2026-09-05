@@ -36,6 +36,7 @@ public class HotelController {
     private final IRoomService roomService;
     private final HotelFavoriteService favoriteService;
     private final UserRepository userRepository;
+    private final com.example.travelManager.repository.hotel.BookedRoomRepository bookedRoomRepository;
 
     // ── Hotel CRUD ──────────────────────────────────────────────
 
@@ -112,10 +113,37 @@ public class HotelController {
 
     // ── Room management per hotel ────────────────────────────────
 
+    /**
+     * Danh sách phòng của khách sạn.
+     *
+     * Truyền thêm checkIn/checkOut thì chỉ trả các phòng CÒN TRỐNG trong khoảng đó.
+     * Trước đây FE lọc bằng cờ room.isBooked, nhưng cờ boolean trên bảng rooms không
+     * diễn tả được "trống hay không" — một phòng chỉ bận trong những khoảng ngày cụ thể.
+     * (Thực tế cờ đó chưa bao giờ được set true nên bộ lọc luôn vô hiệu.)
+     */
     @GetMapping("/{hotelId}/rooms")
     public ResponseEntity<List<RoomResponse>> getRoomsByHotel(
-            @PathVariable("hotelId") Long hotelId) {
+            @PathVariable("hotelId") Long hotelId,
+            @RequestParam(name = "checkIn", required = false)
+            @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
+            java.time.LocalDate checkIn,
+            @RequestParam(name = "checkOut", required = false)
+            @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
+            java.time.LocalDate checkOut) {
+
         List<Room> rooms = roomService.getRoomsByHotelId(hotelId);
+
+        if (checkIn != null && checkOut != null && checkOut.isAfter(checkIn)) {
+            rooms = rooms.stream()
+                    .filter(room -> bookedRoomRepository
+                            .findByRoom_IdAndStatusNotAndCheckOutDateAfterAndCheckInDateBefore(
+                                    room.getId(),
+                                    com.example.travelManager.util.constant.hotel.HotelBookingStatus.CANCELLED,
+                                    checkIn, checkOut)
+                            .isEmpty())
+                    .toList();
+        }
+
         return ResponseEntity.ok(rooms.stream().map(room -> toRoomResponse(room, hotelId)).toList());
     }
 
@@ -237,6 +265,8 @@ public class HotelController {
                 : roomService.countRoomsByHotelId(hotel.getId());
         res.setTotalRooms((int) totalRooms);
         res.setPhoto(photoBytes);
+        res.setLatitude(hotel.getLatitude());
+        res.setLongitude(hotel.getLongitude());
         return res;
     }
 

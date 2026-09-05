@@ -92,10 +92,13 @@ public class PaymentIpnService {
                     b.getBookedRoom().setStatus(HotelBookingStatus.CONFIRMED);
                     bookedRoomRepository.save(b.getBookedRoom());
                 }
-                if (b.getRestaurantBooking() != null
-                        && b.getRestaurantBooking().getStatus() == RestaurantBookingStatus.PENDING) {
-                    b.getRestaurantBooking().setStatus(RestaurantBookingStatus.CONFIRMED);
-                    restaurantBookingRepository.save(b.getRestaurantBooking());
+                // Xác nhận MỌI bữa của đơn. Bản cũ chỉ xác nhận một bữa; nay đơn kèm
+                // nhiều bữa nên bỏ sót là khách trả tiền rồi mà bàn vẫn treo PENDING.
+                for (var bua : b.getRestaurantBookings()) {
+                    if (bua.getStatus() == RestaurantBookingStatus.PENDING) {
+                        bua.setStatus(RestaurantBookingStatus.CONFIRMED);
+                        restaurantBookingRepository.save(bua);
+                    }
                 }
             });
             case "HOTEL" -> bookedRoomRepository.findById(bookingId).ifPresent(b -> {

@@ -11,6 +11,7 @@ import com.example.travelManager.repository.tour.TourDepartureRepository;
 import com.example.travelManager.repository.tour.TourImageRepository;
 import com.example.travelManager.repository.tour.TourItineraryRepository;
 import com.example.travelManager.repository.tour.TourRepository;
+import com.example.travelManager.util.InputValidator;
 import com.example.travelManager.util.constant.tour.BookingStatus;
 import com.example.travelManager.util.constant.tour.TourStatus;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -106,13 +107,8 @@ public class AdminTourController {
             @RequestParam(name = "images", required = false) List<MultipartFile> images) throws Exception {
 
         Tour tour = new Tour();
-        tour.setName(name);
-        tour.setDestination(destination);
-        tour.setDurationDays(durationDays);
-        tour.setDurationNights(durationNights);
-        tour.setPriceAdult(BigDecimal.valueOf(priceAdult));
-        tour.setPriceChild(BigDecimal.valueOf(priceChild));
-        tour.setDescription(description);
+        destination = apDungThongTin(tour, name, destination, durationDays, durationNights,
+                                     priceAdult, priceChild, description);
         tour.setLinkedHotels(buildLinkedJson(autoLinkHotels(destination)));
         tour.setLinkedRestaurants(buildLinkedJson(autoLinkRestaurants(destination)));
         tour.setLinkedDestinations(destinations);
@@ -145,14 +141,9 @@ public class AdminTourController {
 
         Tour tour = tourRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Tour not found: " + id));
-        String destination = req.getDestination() != null ? req.getDestination() : "";
-        tour.setName(req.getName());
-        tour.setDestination(destination);
-        tour.setDurationDays(req.getDurationDays());
-        tour.setDurationNights(req.getDurationNights());
-        tour.setPriceAdult(BigDecimal.valueOf(req.getPriceAdult()));
-        tour.setPriceChild(BigDecimal.valueOf(req.getPriceChild()));
-        tour.setDescription(req.getDescription() != null ? req.getDescription() : "");
+        String destination = apDungThongTin(tour, req.getName(), req.getDestination(),
+                req.getDurationDays(), req.getDurationNights(),
+                req.getPriceAdult(), req.getPriceChild(), req.getDescription());
         tour.setLinkedHotels(buildLinkedJson(autoLinkHotels(destination)));
         tour.setLinkedRestaurants(buildLinkedJson(autoLinkRestaurants(destination)));
         tour.setLinkedDestinations(req.getDestinations() != null ? req.getDestinations() : "[]");
@@ -303,6 +294,32 @@ public class AdminTourController {
     private String extractPrimaryCity(String destination) {
         if (destination == null || destination.isBlank()) return "";
         return destination.split("[–\\-/,]")[0].trim().toLowerCase();
+    }
+
+    /**
+     * Gán và kiểm tra thông tin tour, trả về điểm đến đã chuẩn hoá để dùng tiếp cho
+     * việc tự gắn khách sạn/nhà hàng. Dùng chung cho tạo mới và sửa.
+     *
+     * Số đêm phải khớp số ngày: TourBookingController tính tiền phòng bằng
+     * durationNights, còn TourService bắt buộc chọn khách sạn khi durationNights > 0
+     * — nhập lệch là giá và luồng đặt đều sai theo.
+     */
+    private String apDungThongTin(Tour tour, String name, String destination,
+                                  int durationDays, int durationNights,
+                                  long priceAdult, long priceChild, String description) {
+        tour.setName(InputValidator.ten(name, "Tên tour"));
+        String diemDen = InputValidator.batBuoc(destination, "Điểm đến");
+        tour.setDestination(diemDen);
+        tour.setDurationDays(InputValidator.trongKhoang(durationDays, 1, 365, "Số ngày"));
+        tour.setDurationNights(InputValidator.trongKhoang(durationNights, 0, 364, "Số đêm"));
+        if (durationNights != durationDays - 1 && durationNights != durationDays) {
+            throw new IllegalArgumentException(
+                    "Số đêm (" + durationNights + ") không khớp số ngày (" + durationDays + ")");
+        }
+        tour.setPriceAdult(BigDecimal.valueOf(InputValidator.khongAm(priceAdult, "Giá người lớn")));
+        tour.setPriceChild(BigDecimal.valueOf(InputValidator.khongAm(priceChild, "Giá trẻ em")));
+        tour.setDescription(InputValidator.tuyChon(description, "Mô tả", InputValidator.DAI_TOI_DA_MO_TA));
+        return diemDen;
     }
 
     private List<Integer> autoLinkHotels(String destination) {

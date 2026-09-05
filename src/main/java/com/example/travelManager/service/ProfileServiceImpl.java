@@ -4,7 +4,9 @@ import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.util.UUID;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.stereotype.Service;
 
 import com.example.travelManager.domain.Role;
@@ -211,8 +213,14 @@ public class ProfileServiceImpl implements ProfileService {
         UserEntity existingUser = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy user: " + email));
 
+        // Khác sendResetOtp: ở đây KHÔNG im lặng bỏ qua. Người dùng đang chủ động bấm
+        // "Gửi lại mã", im lặng trả 200 sẽ khiến FE báo "Đã gửi lại mã OTP" trong khi
+        // thực tế không gửi gì — họ ngồi chờ một email không bao giờ tới.
+        // (Với sendResetOtp thì im lặng là đúng, vì phải giấu chuyện email có tồn tại hay không.)
         if (isWithinResendCooldown(existingUser.getVerifyOtpExpireAt(), 24 * 60 * 60 * 1000L)) {
-            return;
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                    "Mã OTP vừa được gửi. Vui lòng kiểm tra hộp thư (kể cả mục Spam) "
+                            + "và đợi 1 phút trước khi yêu cầu mã mới.");
         }
 
         String otp = generateOtp();

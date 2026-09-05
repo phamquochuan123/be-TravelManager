@@ -24,7 +24,9 @@ import com.example.travelManager.service.EmailService;
 import com.example.travelManager.service.tour.ITourService;
 import com.example.travelManager.util.SecurityUtil;
 import com.example.travelManager.util.constant.hotel.HotelBookingStatus;
+import com.example.travelManager.util.constant.restaurant.MealSlot;
 import com.example.travelManager.util.constant.restaurant.RestaurantBookingStatus;
+import com.example.travelManager.service.tour.TourRestaurantAddonService;
 import com.example.travelManager.util.constant.tour.BookingStatus;
 import jakarta.transaction.Transactional;
 import org.springframework.security.access.AccessDeniedException;
@@ -54,7 +56,17 @@ public class TourBookingController {
     private final BookedRoomRepository bookedRoomRepository;
     private final RestaurantRepository restaurantRepository;
     private final RestaurantBookingRepository restaurantBookingRepository;
+    private final com.example.travelManager.service.tour.TourSeasonalPriceService seasonalPriceService;
+    private final com.example.travelManager.service.tour.TourRestaurantAddonService restaurantAddonService;
     private final EmailService emailService;
+
+    /** Chuyến ở các trạng thái này không nhận đặt nữa, dù còn chỗ. */
+    private static final java.util.Set<com.example.travelManager.util.constant.tour.TourDepartureStatus>
+            TRANG_THAI_KHONG_DAT_DUOC = java.util.EnumSet.of(
+                    com.example.travelManager.util.constant.tour.TourDepartureStatus.CANCELLED,
+                    com.example.travelManager.util.constant.tour.TourDepartureStatus.COMPLETED,
+                    com.example.travelManager.util.constant.tour.TourDepartureStatus.ONGOING,
+                    com.example.travelManager.util.constant.tour.TourDepartureStatus.IN_PROGRESS);
 
     @Transactional
     @PostMapping("/tours/{tourId}")
@@ -77,8 +89,23 @@ public class TourBookingController {
                     "Chuyến khởi hành không thuộc tour này");
         }
 
-        BigDecimal priceAdult = tour.getPriceAdult();
-        BigDecimal priceChild = tour.getPriceChild() != null ? tour.getPriceChild() : priceAdult;
+        // Chuyến đã qua ngày đi vẫn còn availableSlots > 0, nên nếu chỉ dựa vào
+        // số chỗ thì khách đặt được một chuyến đã khởi hành từ lâu.
+        if (departure.getDepartureDate() == null
+                || departure.getDepartureDate().isBefore(java.time.LocalDate.now())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Chuyến khởi hành này đã qua ngày đi, không đặt được nữa");
+        }
+        if (TRANG_THAI_KHONG_DAT_DUOC.contains(departure.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Chuyến khởi hành này đã bị huỷ hoặc đã kết thúc");
+        }
+
+        // Giá tính theo NGÀY KHỞI HÀNH: nếu ngày đó rơi vào một mùa đã khai báo
+        // (tour_seasonal_prices) thì dùng giá mùa, không thì dùng giá mặc định của tour.
+        var giaHieuLuc = seasonalPriceService.resolvePrice(tour, departure.getDepartureDate());
+        BigDecimal priceAdult = giaHieuLuc.adult();
+        BigDecimal priceChild = giaHieuLuc.child();
         BigDecimal original = priceAdult.multiply(BigDecimal.valueOf(request.getNumAdults()))
                 .add(priceChild.multiply(BigDecimal.valueOf(request.getNumChildren())));
 
@@ -145,49 +172,17 @@ public class TourBookingController {
             bookedRoom = bookedRoomRepository.save(bookedRoom);
         }
 
-        // Restaurant booking
-        BigDecimal restaurantPrice = BigDecimal.ZERO;
-        RestaurantBooking restaurantBooking = null;
-        if (request.getRestaurantId() != null) {
-            Restaurant restaurant = restaurantRepository.findById(request.getRestaurantId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Restaurant not found: " + request.getRestaurantId()));
-            if (restaurant.getPricePerPerson() != null) {
-                restaurantPrice = restaurant.getPricePerPerson().multiply(BigDecimal.valueOf(totalGuests));
-            }
-            java.time.LocalDate restaurantBookingDate = departure.getDepartureDate();
-            java.time.LocalTime restaurantBookingTime = request.getRestaurantBookingTime() != null
-                    ? request.getRestaurantBookingTime() : java.time.LocalTime.of(12, 0);
-            if (restaurant.getCapacity() != null) {
-                // Khoá row nhà hàng — cùng lý do như RestaurantController.book
-                restaurantRepository.findByIdForUpdate(restaurant.getId());
-                int alreadyBooked = restaurantBookingRepository.sumGuestCountByRestaurantAndDateTime(
-                        restaurant.getId(), restaurantBookingDate, restaurantBookingTime,
-                        RestaurantBookingStatus.CANCELLED);
-                if (alreadyBooked + totalGuests > restaurant.getCapacity()) {
-                    throw new IllegalStateException("Nhà hàng không đủ chỗ trống vào khung giờ này");
-                }
-            }
-            restaurantBooking = new RestaurantBooking();
-            restaurantBooking.setRestaurant(restaurant);
-            restaurantBooking.setUser(user);
-            restaurantBooking.setBookingDate(restaurantBookingDate);
-            restaurantBooking.setBookingTime(restaurantBookingTime);
-            restaurantBooking.setGuestCount(totalGuests);
-            restaurantBooking.setContactName(request.getContactName());
-            restaurantBooking.setContactPhone(request.getContactPhone());
-            restaurantBooking.setContactEmail(request.getContactEmail());
-            // PENDING chứ không CONFIRMED: tour đi kèm vẫn đang chờ thanh toán.
-            // Xác nhận CONFIRMED sẽ do PaymentIpnService.confirmBooking làm khi tiền về.
-            restaurantBooking.setStatus(RestaurantBookingStatus.PENDING);
-            restaurantBooking.setConfirmationCode(org.apache.commons.lang3.RandomStringUtils.randomNumeric(10));
-            restaurantBooking = restaurantBookingRepository.save(restaurantBooking);
-        }
+        // Các bữa ăn kèm được dựng sau khi đã có đối tượng TourBooking (xem bên dưới):
+        // khoá ngoại nay nằm ở restaurant_bookings.tour_booking_id nên mỗi bữa cần
+        // tham chiếu ngược về đơn. Ở đây chỉ cần biết CÓ chọn bữa nào không, để xét
+        // giảm giá combo.
+        boolean coChonNhaHang = request.getRestaurants() != null && !request.getRestaurants().isEmpty();
 
         // Apply package discount — restaurant is paid on-site, not through VNPay
         BigDecimal rawTotal = original.add(hotelPrice);
         BigDecimal packageDiscountAmt = BigDecimal.ZERO;
         if (tour.getPackageDiscountPercent() != null && tour.getPackageDiscountPercent() > 0
-                && (bookedRoom != null || restaurantBooking != null)) {
+                && (bookedRoom != null || coChonNhaHang)) {
             packageDiscountAmt = rawTotal
                     .multiply(BigDecimal.valueOf(tour.getPackageDiscountPercent() / 100.0))
                     .setScale(0, java.math.RoundingMode.HALF_UP);
@@ -202,7 +197,6 @@ public class TourBookingController {
         booking.setUser(user);
         booking.setCoupon(coupon);
         booking.setBookedRoom(bookedRoom);
-        booking.setRestaurantBooking(restaurantBooking);
         booking.setContactName(request.getContactName());
         booking.setContactPhone(request.getContactPhone());
         booking.setContactEmail(request.getContactEmail());
@@ -210,10 +204,22 @@ public class TourBookingController {
         booking.setNumChildren(request.getNumChildren());
         booking.setOriginalPrice(original);
         booking.setPackageHotelPrice(hotelPrice);
-        booking.setPackageRestaurantPrice(restaurantPrice);
         booking.setDiscountAmount(totalDiscount);
         booking.setFinalPrice(finalPrice);
         booking.setNote(request.getNote());
+
+        // Dựng các bữa ăn và gắn vào đơn. cascade = ALL trên TourBooking.restaurantBookings
+        // lo phần ghi xuống DB, nên không gọi restaurantBookingRepository.save ở đây —
+        // lưu tay trước khi đơn tour có id sẽ để lại bữa mồ côi nếu đoạn sau ném lỗi.
+        //
+        // PENDING chứ không CONFIRMED: tour đi kèm vẫn đang chờ thanh toán. Xác nhận
+        // CONFIRMED sẽ do PaymentIpnService.confirmBooking làm khi tiền về.
+        TourRestaurantAddonService.KetQua buaAn = restaurantAddonService.dungCacBua(
+                request.getRestaurants(), tour, departure.getDepartureDate(), booking, user,
+                totalGuests, request.getContactName(), request.getContactPhone(),
+                request.getContactEmail(), RestaurantBookingStatus.PENDING, true);
+        booking.getRestaurantBookings().addAll(buaAn.buaAn());
+        booking.setPackageRestaurantPrice(buaAn.tongTien());
 
         int needed = request.getNumAdults() + request.getNumChildren();
         if (departureRepository.decrementSlot(departure.getId(), needed) == 0) {
@@ -300,11 +306,12 @@ public class TourBookingController {
             room.setStatus(HotelBookingStatus.CANCELLED);
             bookedRoomRepository.save(room);
         }
-        if (booking.getRestaurantBooking() != null) {
-            RestaurantBooking restBooking = booking.getRestaurantBooking();
+        // Huỷ TẤT CẢ bữa của đơn. Bản cũ chỉ huỷ đúng một bữa; nay một đơn kèm nhiều
+        // bữa nên bỏ sót là những bữa còn lại vẫn giữ chỗ ở nhà hàng dù tour đã huỷ.
+        for (RestaurantBooking restBooking : booking.getRestaurantBookings()) {
             restBooking.setStatus(RestaurantBookingStatus.CANCELLED);
-            restaurantBookingRepository.save(restBooking);
         }
+        restaurantBookingRepository.saveAll(booking.getRestaurantBookings());
         if (booking.getCoupon() != null) {
             TourCoupon coupon = couponRepository.findByCodeForUpdate(booking.getCoupon().getCode())
                     .orElse(null);
@@ -362,13 +369,23 @@ public class TourBookingController {
             res.setCheckInDate(br.getCheckInDate());
             res.setCheckOutDate(br.getCheckOutDate());
         }
-        if (b.getRestaurantBooking() != null) {
-            RestaurantBooking rb = b.getRestaurantBooking();
-            res.setRestaurantBookingId(rb.getId());
+        for (RestaurantBooking rb : b.getRestaurantBookings()) {
+            TourBookingResponse.BuaAn bua = new TourBookingResponse.BuaAn();
+            bua.setRestaurantBookingId(rb.getId());
             if (rb.getRestaurant() != null) {
-                res.setRestaurantId(rb.getRestaurant().getId());
-                res.setRestaurantName(rb.getRestaurant().getName());
+                bua.setRestaurantId(rb.getRestaurant().getId());
+                bua.setRestaurantName(rb.getRestaurant().getName());
             }
+            bua.setBookingDate(rb.getBookingDate());
+            bua.setBookingTime(rb.getBookingTime());
+            MealSlot khung = MealSlot.cuaGio(rb.getBookingTime());
+            if (khung != null) {
+                bua.setMealSlot(khung.name());
+                bua.setMealSlotLabel(khung.nhan());
+            }
+            bua.setGuestCount(rb.getGuestCount());
+            bua.setConfirmationCode(rb.getConfirmationCode());
+            res.getRestaurants().add(bua);
         }
         return res;
     }

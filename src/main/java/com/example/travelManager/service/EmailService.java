@@ -2,7 +2,11 @@ package com.example.travelManager.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeMessage;
 import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -23,35 +27,91 @@ public class EmailService {
         this.mailSender = mailSender;
     }
 
+    /** Tên hiển thị của người gửi. Mail không có tên người gửi rất dễ bị Gmail xếp vào Spam. */
+    private static final String SENDER_NAME = "Travel Manager";
+
+    /**
+     * Gửi mail có tên người gửi và nội dung HTML.
+     *
+     * Vì sao không dùng SimpleMailMessage nữa: nó chỉ đặt được địa chỉ trần, không đặt được
+     * tên hiển thị. Mail chỉ có mỗi dòng "Your OTP is 123456" gửi từ một địa chỉ không tên
+     * là đúng khuôn mẫu spam — Gmail lọc thẳng vào Spam của người nhận, nên người dùng
+     * đăng ký xong ngồi chờ mã mãi không thấy.
+     */
+    private void sendHtml(String toEmail, String subject, String htmlBody, String plainFallback) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(new InternetAddress(mailFrom, SENDER_NAME, "UTF-8"));
+            helper.setReplyTo(mailFrom);
+            helper.setTo(toEmail);
+            helper.setSubject(subject);
+            helper.setText(plainFallback, htmlBody);
+            mailSender.send(message);
+        } catch (MessagingException | java.io.UnsupportedEncodingException e) {
+            // Bọc lại để phía gọi (ProfileServiceImpl) xử lý như trước
+            throw new IllegalStateException("Không gửi được email tới " + toEmail, e);
+        }
+    }
+
+    /** Khung HTML chung: tiếng Việt, có ngữ cảnh rõ ràng, không dùng chữ hoa/giục gấp. */
+    private String otpHtml(String tieuDe, String moTa, String otp, String hanSuDung) {
+        return """
+                <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#222">
+                  <h2 style="color:#0a1628;margin-bottom:4px">%s</h2>
+                  <p style="color:#555;line-height:1.6">%s</p>
+                  <div style="background:#f4f7fb;border:1px solid #dbe4f0;border-radius:6px;
+                              padding:18px;text-align:center;margin:20px 0">
+                    <div style="font-size:30px;letter-spacing:6px;font-weight:bold;color:#0a1628">%s</div>
+                  </div>
+                  <p style="color:#555;line-height:1.6">Mã có hiệu lực trong %s.</p>
+                  <p style="color:#888;font-size:13px;line-height:1.6">
+                    Nếu bạn không thực hiện yêu cầu này, hãy bỏ qua email.
+                  </p>
+                  <hr style="border:none;border-top:1px solid #eee;margin:22px 0">
+                  <p style="color:#999;font-size:12px">Travel Manager — hệ thống đặt tour, khách sạn và nhà hàng.</p>
+                </div>
+                """.formatted(tieuDe, moTa, otp, hanSuDung);
+    }
+
+    /**
+     * Không để @Async ảnh hưởng luồng đăng ký thì đăng ký mất ~8s vì phải chờ 2 lần gửi mail.
+     * Mail chào mừng không quan trọng bằng OTP nên cho chạy nền.
+     */
+    @Async
     public void sendWelcomeEmail(String toEmail, String name) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(mailFrom);
-        message.setTo(toEmail);
-        message.setSubject("Welcome to our Travel Manager App");
-        message.setText(
-                "Dear " + name +
-                        ",\n\nWelcome to our Travel Manager App! We're excited to have you on board." +
-                        "\n\nBest regards,\nTravel Manager Team");
-        mailSender.send(message);
+        String html = """
+                <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#222">
+                  <h2 style="color:#0a1628">Chào %s,</h2>
+                  <p style="color:#555;line-height:1.6">
+                    Tài khoản Travel Manager của bạn đã được tạo. Bạn có thể tìm và đặt tour,
+                    phòng khách sạn và bàn nhà hàng ngay bây giờ.
+                  </p>
+                  <hr style="border:none;border-top:1px solid #eee;margin:22px 0">
+                  <p style="color:#999;font-size:12px">Travel Manager — hệ thống đặt tour, khách sạn và nhà hàng.</p>
+                </div>
+                """.formatted(name);
+        sendHtml(toEmail, "Chào mừng bạn đến với Travel Manager",
+                html, "Chào " + name + ", tài khoản Travel Manager của bạn đã được tạo.");
     }
 
     public void sendResetOtpEmail(String toEmail, String otp) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(mailFrom);
-        message.setTo(toEmail);
-        message.setSubject("PassWord Reset OTP");
-        message.setText("Your OTP for resetting your password is " + otp
-                + ". Use this OTP to proceed with resetting your password");
-        mailSender.send(message);
+        sendHtml(toEmail,
+                "Mã đặt lại mật khẩu Travel Manager",
+                otpHtml("Đặt lại mật khẩu",
+                        "Bạn vừa yêu cầu đặt lại mật khẩu cho tài khoản Travel Manager. "
+                                + "Nhập mã bên dưới để tiếp tục.",
+                        otp, "15 phút"),
+                "Ma dat lai mat khau Travel Manager cua ban la " + otp + ", co hieu luc trong 15 phut.");
     }
 
     public void sendOtpEmail(String toEmail, String otp) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(mailFrom);
-        message.setTo(toEmail);
-        message.setSubject("Account Verification OTP");
-        message.setText("Your OTP is " + otp + ". Verify your account using this OTP.");
-        mailSender.send(message);
+        sendHtml(toEmail,
+                "Mã xác thực tài khoản Travel Manager",
+                otpHtml("Xác thực địa chỉ email",
+                        "Cảm ơn bạn đã đăng ký Travel Manager. Nhập mã bên dưới để xác thực email.",
+                        otp, "24 giờ"),
+                "Ma xac thuc tai khoan Travel Manager cua ban la " + otp + ", co hieu luc trong 24 gio.");
     }
 
     @Async

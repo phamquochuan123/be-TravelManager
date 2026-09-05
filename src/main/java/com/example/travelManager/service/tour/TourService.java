@@ -45,6 +45,7 @@ import com.example.travelManager.util.constant.hotel.HotelBookingStatus;
 import com.example.travelManager.util.constant.restaurant.RestaurantBookingStatus;
 import com.example.travelManager.util.constant.tour.BookingStatus;
 import com.example.travelManager.util.constant.tour.CouponType;
+import com.example.travelManager.util.constant.tour.TourDepartureStatus;
 import com.example.travelManager.util.constant.tour.TourStatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -58,17 +59,24 @@ public class TourService implements ITourService {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /** Chuyến ở các trạng thái này không nhận đặt nữa, dù còn chỗ. */
+    private static final java.util.Set<TourDepartureStatus> TRANG_THAI_KHONG_DAT_DUOC =
+            java.util.EnumSet.of(TourDepartureStatus.CANCELLED, TourDepartureStatus.COMPLETED,
+                                 TourDepartureStatus.ONGOING, TourDepartureStatus.IN_PROGRESS);
+
     private final TourRepository tourRepository;
     private final TourItineraryRepository itineraryRepository;
     private final TourDepartureRepository departureRepository;
     private final TourImageRepository imageRepository;
     private final TourBookingRepository bookingRepository;
     private final TourCouponRepository couponRepository;
+    private final TourSeasonalPriceService seasonalPriceService;
     private final HotelRepository hotelRepository;
     private final RoomRepository roomRepository;
     private final BookedRoomRepository bookedRoomRepository;
     private final RestaurantRepository restaurantRepository;
     private final RestaurantBookingRepository restaurantBookingRepository;
+    private final TourRestaurantAddonService restaurantAddonService;
     private final UserRepository userRepository;
 
     // ── Tour CRUD ────────────────────────────────────────────────
@@ -216,6 +224,16 @@ public class TourService implements ITourService {
             throw new IllegalArgumentException("Departure không thuộc tour này");
         }
 
+        // Cùng luật với TourBookingController.book — chuyến đã đi hoặc đã huỷ
+        // vẫn còn availableSlots > 0 nên số chỗ không đủ để chặn.
+        if (departure.getDepartureDate() == null
+                || departure.getDepartureDate().isBefore(LocalDate.now())) {
+            throw new IllegalStateException("Chuyến khởi hành này đã qua ngày đi, không đặt được nữa");
+        }
+        if (TRANG_THAI_KHONG_DAT_DUOC.contains(departure.getStatus())) {
+            throw new IllegalStateException("Chuyến khởi hành này đã bị huỷ hoặc đã kết thúc");
+        }
+
         int totalGuests = request.getNumAdults() + request.getNumChildren();
         if (departure.getAvailableSlots() < totalGuests) {
             throw new IllegalStateException("Không đủ chỗ. Còn " + departure.getAvailableSlots() + " chỗ");
@@ -228,11 +246,10 @@ public class TourService implements ITourService {
         UserEntity user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userEmail));
 
-        // Tính giá
-        BigDecimal tourPrice = tour.getPriceAdult().multiply(BigDecimal.valueOf(request.getNumAdults()))
-                .add(tour.getPriceChild() != null
-                        ? tour.getPriceChild().multiply(BigDecimal.valueOf(request.getNumChildren()))
-                        : BigDecimal.ZERO);
+        // Tính giá theo NGÀY KHỞI HÀNH (giá mùa nếu có), giống luồng TourBookingController.book
+        var giaHieuLuc = seasonalPriceService.resolvePrice(tour, departure.getDepartureDate());
+        BigDecimal tourPrice = giaHieuLuc.adult().multiply(BigDecimal.valueOf(request.getNumAdults()))
+                .add(giaHieuLuc.child().multiply(BigDecimal.valueOf(request.getNumChildren())));
 
         BigDecimal hotelPrice = BigDecimal.ZERO;
         Room room = null;
@@ -242,15 +259,8 @@ public class TourService implements ITourService {
             hotelPrice = room.getRoomPrice().multiply(BigDecimal.valueOf(tour.getDurationNights()));
         }
 
-        BigDecimal restaurantPrice = BigDecimal.ZERO;
-        Restaurant restaurant = null;
-        if (request.getRestaurantId() != null) {
-            restaurant = restaurantRepository.findById(request.getRestaurantId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Restaurant not found: " + request.getRestaurantId()));
-            if (restaurant.getPricePerPerson() != null) {
-                restaurantPrice = restaurant.getPricePerPerson().multiply(BigDecimal.valueOf(totalGuests));
-            }
-        }
+        // Các bữa ăn kèm được dựng ở dưới, sau khi đã có đối tượng TourBooking.
+        boolean coChonNhaHang = request.getRestaurants() != null && !request.getRestaurants().isEmpty();
 
         // Restaurant thanh toán trực tiếp tại chỗ, không tính vào rawTotal/finalPrice
         // (đồng bộ với luồng đang dùng thực tế ở TourBookingController.book)
@@ -258,7 +268,7 @@ public class TourService implements ITourService {
 
         BigDecimal packageDiscountAmt = BigDecimal.ZERO;
         if (tour.getPackageDiscountPercent() != null && tour.getPackageDiscountPercent() > 0
-                && (room != null || restaurant != null)) {
+                && (room != null || coChonNhaHang)) {
             packageDiscountAmt = rawTotal
                     .multiply(BigDecimal.valueOf(tour.getPackageDiscountPercent() / 100.0))
                     .setScale(0, RoundingMode.HALF_UP);
@@ -322,34 +332,7 @@ public class TourService implements ITourService {
             bookedRoom = bookedRoomRepository.save(bookedRoom);
         }
 
-        // Tạo RestaurantBooking
-        RestaurantBooking restaurantBooking = null;
-        if (restaurant != null) {
-            LocalDate restaurantBookingDate = departure.getDepartureDate();
-            LocalTime restaurantBookingTime = request.getRestaurantBookingTime() != null
-                    ? request.getRestaurantBookingTime() : LocalTime.of(12, 0);
-            if (restaurant.getCapacity() != null) {
-                int alreadyBooked = restaurantBookingRepository.sumGuestCountByRestaurantAndDateTime(
-                        restaurant.getId(), restaurantBookingDate, restaurantBookingTime,
-                        RestaurantBookingStatus.CANCELLED);
-                if (alreadyBooked + totalGuests > restaurant.getCapacity()) {
-                    throw new IllegalStateException("Nhà hàng không đủ chỗ trống vào khung giờ này");
-                }
-            }
-            restaurantBooking = new RestaurantBooking();
-            restaurantBooking.setRestaurant(restaurant);
-            restaurantBooking.setUser(user);
-            restaurantBooking.setBookingDate(restaurantBookingDate);
-            restaurantBooking.setBookingTime(restaurantBookingTime);
-            restaurantBooking.setGuestCount(totalGuests);
-            restaurantBooking.setContactName(request.getContactName());
-            restaurantBooking.setContactPhone(request.getContactPhone());
-            restaurantBooking.setContactEmail(request.getContactEmail());
-            restaurantBooking.setStatus(RestaurantBookingStatus.CONFIRMED);
-            restaurantBooking.setConfirmationCode(
-                    org.apache.commons.lang3.RandomStringUtils.randomNumeric(10));
-            restaurantBooking = restaurantBookingRepository.save(restaurantBooking);
-        }
+        // Bữa ăn kèm được dựng sau khi có đối tượng TourBooking, ở ngay dưới.
 
         // Tạo TourBooking
         TourBooking booking = new TourBooking();
@@ -358,7 +341,6 @@ public class TourService implements ITourService {
         booking.setUser(user);
         booking.setCoupon(coupon);
         booking.setBookedRoom(bookedRoom);
-        booking.setRestaurantBooking(restaurantBooking);
         booking.setContactName(request.getContactName());
         booking.setContactPhone(request.getContactPhone());
         booking.setContactEmail(request.getContactEmail());
@@ -366,11 +348,19 @@ public class TourService implements ITourService {
         booking.setNumChildren(request.getNumChildren());
         booking.setOriginalPrice(rawTotal);
         booking.setPackageHotelPrice(hotelPrice);
-        booking.setPackageRestaurantPrice(restaurantPrice);
         booking.setDiscountAmount(totalDiscount);
         booking.setFinalPrice(finalPrice);
         booking.setNote(request.getNote());
         booking.setStatus(BookingStatus.PENDING);
+
+        // Dùng chung TourRestaurantAddonService với TourBookingController để luật bữa ăn
+        // (khung sáng/trưa/tối, ngày trong thời gian tour, sức chứa) chỉ nằm một chỗ.
+        var buaAn = restaurantAddonService.dungCacBua(
+                request.getRestaurants(), tour, departure.getDepartureDate(), booking, user,
+                totalGuests, request.getContactName(), request.getContactPhone(),
+                request.getContactEmail(), RestaurantBookingStatus.CONFIRMED, false);
+        booking.getRestaurantBookings().addAll(buaAn.buaAn());
+        booking.setPackageRestaurantPrice(buaAn.tongTien());
 
         // Giảm slot nguyên tử (UPDATE ... WHERE availableSlots >= needed) — tránh race condition overselling
         if (departureRepository.decrementSlot(departure.getId(), totalGuests) == 0) {
@@ -431,11 +421,24 @@ public class TourService implements ITourService {
             res.setCheckInDate(br.getCheckInDate());
             res.setCheckOutDate(br.getCheckOutDate());
         }
-        if (b.getRestaurantBooking() != null) {
-            RestaurantBooking rb = b.getRestaurantBooking();
-            res.setRestaurantBookingId(rb.getId());
-            res.setRestaurantId(rb.getRestaurant().getId());
-            res.setRestaurantName(rb.getRestaurant().getName());
+        for (RestaurantBooking rb : b.getRestaurantBookings()) {
+            var bua = new com.example.travelManager.domain.response.tour.TourBookingResponse.BuaAn();
+            bua.setRestaurantBookingId(rb.getId());
+            if (rb.getRestaurant() != null) {
+                bua.setRestaurantId(rb.getRestaurant().getId());
+                bua.setRestaurantName(rb.getRestaurant().getName());
+            }
+            bua.setBookingDate(rb.getBookingDate());
+            bua.setBookingTime(rb.getBookingTime());
+            var khung = com.example.travelManager.util.constant.restaurant.MealSlot
+                    .cuaGio(rb.getBookingTime());
+            if (khung != null) {
+                bua.setMealSlot(khung.name());
+                bua.setMealSlotLabel(khung.nhan());
+            }
+            bua.setGuestCount(rb.getGuestCount());
+            bua.setConfirmationCode(rb.getConfirmationCode());
+            res.getRestaurants().add(bua);
         }
         return res;
     }

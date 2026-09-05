@@ -5,6 +5,7 @@ import com.example.travelManager.domain.hotel.Room;
 import com.example.travelManager.exception.ResourceNotFoundException;
 import com.example.travelManager.repository.hotel.HotelRepository;
 import com.example.travelManager.repository.hotel.RoomRepository;
+import com.example.travelManager.util.InputValidator;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
@@ -31,6 +32,7 @@ public class AdminHotelController {
 
     private final HotelRepository hotelRepository;
     private final RoomRepository roomRepository;
+    private final com.example.travelManager.service.NominatimGeocodingService geocodingService;
 
     @GetMapping
     public ResponseEntity<Map<String, Object>> list(
@@ -76,15 +78,11 @@ public class AdminHotelController {
             MultipartHttpServletRequest multipartRequest) throws Exception {
 
         Hotel hotel = new Hotel();
-        hotel.setName(name);
-        hotel.setAddress(address);
-        hotel.setCity(city.isBlank() ? null : city);
+        apDungThongTin(hotel, name, address, city, stars, description, amenities);
         hotel.setLatitude(latitude);
         hotel.setLongitude(longitude);
-        hotel.setStarRating(stars);
-        hotel.setDescription(description);
-        hotel.setAmenities(amenities);
         hotel.setActive(true);
+        boSungToaDoNeuThieu(hotel);
 
         if (images != null && !images.isEmpty() && !images.get(0).isEmpty()) {
             hotel.setPhoto(new SerialBlob(images.get(0).getBytes()));
@@ -112,14 +110,10 @@ public class AdminHotelController {
 
         Hotel hotel = hotelRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Hotel not found: " + id));
-        hotel.setName(name);
-        hotel.setAddress(address);
-        hotel.setCity(city.isBlank() ? null : city);
+        apDungThongTin(hotel, name, address, city, stars, description, amenities);
         if (latitude != null) hotel.setLatitude(latitude);
         if (longitude != null) hotel.setLongitude(longitude);
-        hotel.setStarRating(stars);
-        hotel.setDescription(description);
-        hotel.setAmenities(amenities);
+        boSungToaDoNeuThieu(hotel);
 
         if (images != null && !images.isEmpty() && !images.get(0).isEmpty()) {
             hotel.setPhoto(new SerialBlob(images.get(0).getBytes()));
@@ -167,6 +161,41 @@ public class AdminHotelController {
             }
             roomRepository.save(room);
         }
+    }
+
+    /**
+     * Gán thông tin cơ bản sau khi đã kiểm tra. Dùng chung cho cả tạo mới và sửa
+     * để hai đường không bao giờ lệch luật nhau — trước đây cả hai đều gán thẳng
+     * @RequestParam vào entity nên tên rỗng, 99 sao, tên 500 ký tự đều lọt.
+     */
+    private void apDungThongTin(Hotel hotel, String name, String address, String city,
+                                int stars, String description, String amenities) {
+        hotel.setName(InputValidator.ten(name, "Tên khách sạn"));
+        hotel.setAddress(InputValidator.tuyChon(address, "Địa chỉ"));
+        String thanhPho = InputValidator.batBuoc(city, "Thành phố");
+        hotel.setCity(thanhPho);
+        hotel.setStarRating(InputValidator.trongKhoang(stars, 1, 5, "Hạng sao"));
+        hotel.setDescription(InputValidator.tuyChon(description, "Mô tả", InputValidator.DAI_TOI_DA_MO_TA));
+        hotel.setAmenities(InputValidator.tuyChon(amenities, "Tiện ích", InputValidator.DAI_TOI_DA_MO_TA));
+    }
+
+    /**
+     * Tự tra toạ độ khi admin lưu mà chưa có.
+     *
+     * Picker Google là nguồn chính xác nhất nhưng đang không dùng được (Places API
+     * (New) bị tắt trên project, trả 403), nên nếu không có bước này thì mọi khách
+     * sạn thêm mới đều thiếu toạ độ và trang chi tiết không vẽ được bản đồ.
+     *
+     * Tra hỏng thì bỏ qua, không chặn thao tác lưu: thiếu toạ độ chỉ mất bản đồ
+     * nhúng, khách vẫn còn nút mở Google Maps theo tên và địa chỉ.
+     */
+    private void boSungToaDoNeuThieu(Hotel hotel) {
+        if (hotel.getLatitude() != null && hotel.getLongitude() != null) return;
+        geocodingService.tim(hotel.getName(), hotel.getAddress(), hotel.getCity())
+                .ifPresent(toaDo -> {
+                    hotel.setLatitude(toaDo.lat());
+                    hotel.setLongitude(toaDo.lon());
+                });
     }
 
     private HotelItem toItem(Hotel hotel) {
